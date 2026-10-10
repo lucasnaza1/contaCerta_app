@@ -1,19 +1,77 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { EditarLancamento } from "@/components/EditarLancamento";
 import { IconeEntrada, IconeForma } from "@/components/icones";
 import { db } from "@/lib/db";
 import { formatarMoeda, nomeMesCurto, somarMes } from "@/lib/mes";
 import type { Cartao, Despesa, Entrada } from "@/lib/types";
 
+/** Toque curto alterna; toque longo (500ms) abre edição. */
+function useToqueLongo(aoCurto: () => void, aoLongo: () => void) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const acionado = useRef(false);
+  const posicao = useRef({ x: 0, y: 0 });
+
+  function limpar() {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
+
+  return {
+    onClick: () => {
+      // Ignora o clique que solta um toque longo.
+      if (acionado.current) {
+        acionado.current = false;
+        return;
+      }
+      aoCurto();
+    },
+    onPointerDown: (e: React.PointerEvent) => {
+      acionado.current = false;
+      posicao.current = { x: e.clientX, y: e.clientY };
+      limpar();
+      timer.current = setTimeout(() => {
+        acionado.current = true;
+        aoLongo();
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(10);
+        }
+      }, 500);
+    },
+    onPointerUp: limpar,
+    onPointerLeave: limpar,
+    onPointerCancel: limpar,
+    onPointerMove: (e: React.PointerEvent) => {
+      // Movimento de rolagem cancela o toque longo.
+      if (timer.current) {
+        const d = Math.abs(e.clientX - posicao.current.x) + Math.abs(e.clientY - posicao.current.y);
+        if (d > 10) limpar();
+      }
+    },
+    onContextMenu: (e: React.MouseEvent) => {
+      // Segurar no mobile abre o menu de contexto; abrimos a edição.
+      e.preventDefault();
+      if (!acionado.current) {
+        acionado.current = true;
+        aoLongo();
+      }
+    },
+  };
+}
+
 interface ItemDespesaProps {
   despesa: Despesa;
   cartoes: Cartao[];
   mesFuturo: boolean;
+  onEditar: (d: Despesa) => void;
 }
 
-function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
+function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps) {
   const [salvando, setSalvando] = useState(false);
+  const toques = useToqueLongo(alternar, () => onEditar(despesa));
 
   const nomeCartao = despesa.cartaoId
     ? cartoes.find((c) => c.id === despesa.cartaoId)?.nome
@@ -35,8 +93,9 @@ function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
     <li className="border-b border-borda last:border-0">
       <button
         type="button"
-        onClick={alternar}
         aria-pressed={despesa.paga}
+        title="Toque para marcar como paga; segure para editar"
+        {...toques}
         className="flex w-full min-w-0 items-center gap-3 py-2.5 text-left"
       >
         <span
@@ -86,10 +145,12 @@ function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
 interface ItemEntradaProps {
   entrada: Entrada;
   mesFuturo: boolean;
+  onEditar: (e: Entrada) => void;
 }
 
-function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
+function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
   const [salvando, setSalvando] = useState(false);
+  const toques = useToqueLongo(alternar, () => onEditar(entrada));
 
   async function alternar() {
     if (salvando) return;
@@ -108,8 +169,9 @@ function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
     <li className="border-b border-borda last:border-0">
       <button
         type="button"
-        onClick={alternar}
         aria-pressed={entrada.recebida}
+        title="Toque para marcar como recebida; segure para editar"
+        {...toques}
         className="flex w-full min-w-0 items-center gap-3 py-2.5 text-left"
       >
         <span
@@ -163,6 +225,9 @@ interface ChecklistMesProps {
 }
 
 export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: ChecklistMesProps) {
+  const [despesaEdicao, setDespesaEdicao] = useState<Despesa | null>(null);
+  const [entradaEdicao, setEntradaEdicao] = useState<Entrada | null>(null);
+
   const mesFuturo = mes > mesRef;
   const doMesDespesas = despesas.filter((d) => d.mes === mes);
   const doMesEntradas = entradas.filter((e) => e.mes === mes);
@@ -174,35 +239,62 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
   const vazio = doMesDespesas.length + doMesEntradas.length === 0;
 
   return (
-    <section aria-label="Contas do mês" className="rounded-2xl bg-surface px-4 py-2 shadow-sm">
-      {vazio ? (
-        <div className="flex flex-col items-center gap-2 py-10 text-center">
-          <p className="text-[15px] font-medium text-foreground/70">
-            Nada por aqui ainda
-          </p>
-          <p className="max-w-60 text-sm text-foreground/50">
-            Toque no botão + para adicionar as contas de {nomeMesCurto(mes).toLowerCase()}.
-          </p>
-        </div>
-      ) : (
-        <ul className="list-none">
-          {pendentesDespesas.map((d) => (
-            <ItemDespesa key={d.id} despesa={d} cartoes={cartoes} mesFuturo={mesFuturo} />
-          ))}
-          {pendentesEntradas.map((e) => (
-            <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} />
-          ))}
-          {pagasDespesas.map((d) => (
-            <ItemDespesa key={d.id} despesa={d} cartoes={cartoes} mesFuturo={mesFuturo} />
-          ))}
-          {recebidasEntradas.map((e) => (
-            <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} />
-          ))}
-        </ul>
-      )}
-      <p className="sr-only">
-        Mês de referência para previsões: {mesRef}. Próximo mês: {somarMes(mes, 1)}.
-      </p>
-    </section>
+    <>
+      <section
+        aria-label="Contas do mês"
+        className="rounded-2xl bg-surface px-4 py-2 shadow-sm"
+      >
+        {vazio ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-center">
+            <p className="text-[15px] font-medium text-foreground/70">
+              Nada por aqui ainda
+            </p>
+            <p className="max-w-60 text-sm text-foreground/50">
+              Toque no botão + para adicionar as contas de {nomeMesCurto(mes).toLowerCase()}.
+            </p>
+          </div>
+        ) : (
+          <ul className="list-none">
+            {pendentesDespesas.map((d) => (
+              <ItemDespesa
+                key={d.id}
+                despesa={d}
+                cartoes={cartoes}
+                mesFuturo={mesFuturo}
+                onEditar={setDespesaEdicao}
+              />
+            ))}
+            {pendentesEntradas.map((e) => (
+              <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
+            ))}
+            {pagasDespesas.map((d) => (
+              <ItemDespesa
+                key={d.id}
+                despesa={d}
+                cartoes={cartoes}
+                mesFuturo={mesFuturo}
+                onEditar={setDespesaEdicao}
+              />
+            ))}
+            {recebidasEntradas.map((e) => (
+              <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
+            ))}
+          </ul>
+        )}
+        <p className="sr-only">
+          Mês de referência para previsões: {mesRef}. Próximo mês: {somarMes(mes, 1)}.
+        </p>
+      </section>
+
+      <EditarLancamento
+        despesa={despesaEdicao}
+        entrada={entradaEdicao}
+        cartoes={cartoes}
+        onFechar={() => {
+          setDespesaEdicao(null);
+          setEntradaEdicao(null);
+        }}
+      />
+    </>
   );
 }

@@ -31,6 +31,13 @@ export function nomeMes(mes: string): string {
   return `${nome.charAt(0).toUpperCase()}${nome.slice(1)} de ${ano}`;
 }
 
+/** "2026-10" -> "Outubro/2026" */
+export function nomeMesAno(mes: string): string {
+  const [ano, m] = mes.split("-").map(Number);
+  const nome = MESES[m - 1] ?? "";
+  return `${nome.charAt(0).toUpperCase()}${nome.slice(1)}/${ano}`;
+}
+
 /** "2026-10" -> "Outubro" */
 export function nomeMesCurto(mes: string): string {
   const [, m] = mes.split("-").map(Number);

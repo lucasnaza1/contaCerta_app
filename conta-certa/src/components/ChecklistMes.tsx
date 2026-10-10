@@ -1,15 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { IconeEntrada, IconeForma } from "@/components/icones";
 import { db } from "@/lib/db";
 import { formatarMoeda, nomeMesCurto, somarMes } from "@/lib/mes";
-import type { Cartao, Despesa, Entrada, Forma } from "@/lib/types";
-
-const NOMES_FORMA: Record<Forma, string> = {
-  pix: "Pix",
-  boleto: "Boleto",
-  cartao: "Cartão",
-};
+import type { Cartao, Despesa, Entrada } from "@/lib/types";
 
 interface ItemDespesaProps {
   despesa: Despesa;
@@ -47,13 +42,13 @@ function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
         <span
           role="img"
           aria-label={despesa.paga ? "Paga" : "A pagar"}
-          className={`botao-min flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-xl border-2 text-xl font-bold ${
+          className={`botao-min flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-xl border-2 ${
             despesa.paga
-              ? "border-previsao bg-previsao text-white"
-              : "border-borda bg-surface text-transparent"
+              ? "border-despesa bg-despesa text-white"
+              : "border-borda bg-surface text-despesa"
           }`}
         >
-          ✓
+          <IconeForma forma={despesa.forma} className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
           <span
@@ -69,8 +64,7 @@ function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
               despesa.paga ? "text-neutra" : "text-foreground/50"
             }`}
           >
-            {NOMES_FORMA[despesa.forma]}
-            {nomeCartao ? ` · ${nomeCartao}` : ""}
+            {nomeCartao ?? (despesa.forma === "cartao" ? "Cartão" : undefined)}
           </span>
         </span>
         <span
@@ -79,7 +73,7 @@ function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
               ? "text-neutra line-through"
               : mesFuturo
                 ? "text-previsao"
-                : "text-foreground"
+                : "text-despesa"
           }`}
         >
           {formatarMoeda(despesa.valor)}
@@ -107,6 +101,9 @@ function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
     }
   }
 
+  const parcela =
+    entrada.parcela && entrada.parcelas ? ` ${entrada.parcela}/${entrada.parcelas}` : "";
+
   return (
     <li className="border-b border-borda last:border-0">
       <button
@@ -118,13 +115,13 @@ function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
         <span
           role="img"
           aria-label={entrada.recebida ? "Recebida" : "A receber"}
-          className={`botao-min flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-xl border-2 text-xl font-bold ${
+          className={`botao-min flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-xl border-2 ${
             entrada.recebida
-              ? "border-previsao bg-previsao text-white"
-              : "border-borda bg-surface text-transparent"
+              ? "border-entrada bg-entrada text-white"
+              : "border-borda bg-surface text-entrada"
           }`}
         >
-          ✓
+          <IconeEntrada className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
           <span
@@ -133,9 +130,10 @@ function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
             }`}
           >
             {entrada.descricao}
+            {parcela}
           </span>
           <span
-            className={`block text-xs ${entrada.recebida ? "text-neutra" : "text-previsao"}`}
+            className={`block text-xs ${entrada.recebida ? "text-neutra" : "text-entrada"}`}
           >
             {entrada.recebida ? "Recebida" : "A receber"}
           </span>
@@ -146,7 +144,7 @@ function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
               ? "text-neutra line-through"
               : mesFuturo
                 ? "text-previsao"
-                : "text-foreground"
+                : "text-entrada"
           }`}
         >
           {formatarMoeda(entrada.valor)}

@@ -7,7 +7,7 @@ import { CadastroInicial } from "@/components/CadastroInicial";
 import { ChecklistMes } from "@/components/ChecklistMes";
 import { TresNumeros } from "@/components/TresNumeros";
 import { resumirMes } from "@/lib/calculo";
-import { mesAtual, mesValido, nomeMesCurto, somarMes } from "@/lib/mes";
+import { mesAtual, mesValido, nomeMesAno, somarMes } from "@/lib/mes";
 import { useDados } from "@/lib/useDados";
 
 export default function PaginaMes() {
@@ -47,18 +47,18 @@ export default function PaginaMes() {
           <button
             type="button"
             onClick={() => setMes(somarMes(mes, -1))}
-            aria-label={`Mês anterior, ${nomeMesCurto(somarMes(mes, -1))}`}
+            aria-label={`Mês anterior, ${nomeMesAno(somarMes(mes, -1))}`}
             className="botao-min flex items-center justify-center rounded-full hover:bg-foreground/5"
           >
             <span aria-hidden className="text-xl">
               ‹
             </span>
           </button>
-          <h1 className="text-lg font-bold capitalize">{nomeMesCurto(mes)}</h1>
+          <h1 className="text-lg font-bold">{nomeMesAno(mes)}</h1>
           <button
             type="button"
             onClick={() => setMes(somarMes(mes, 1))}
-            aria-label={`Próximo mês, ${nomeMesCurto(somarMes(mes, 1))}`}
+            aria-label={`Próximo mês, ${nomeMesAno(somarMes(mes, 1))}`}
             className="botao-min flex items-center justify-center rounded-full hover:bg-foreground/5"
           >
             <span aria-hidden className="text-xl">

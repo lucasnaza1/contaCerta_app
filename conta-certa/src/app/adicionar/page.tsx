@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Abas } from "@/components/Abas";
+import { IconeBoleto, IconeCartao, IconeEntrada, IconePix } from "@/components/icones";
 import { db } from "@/lib/db";
 import {
   dividirParcelas,
@@ -23,6 +24,8 @@ const inputClasse =
 const botaoPrimario =
   "botao-min w-full rounded-xl bg-previsao px-4 py-3 text-base font-semibold text-white hover:opacity-90 disabled:opacity-60";
 
+const OPCOES_PARCELAS = Array.from({ length: 24 }, (_, i) => i + 1);
+
 export default function PaginaAdicionar() {
   const router = useRouter();
   const { carregando, cartoes } = useDados();
@@ -38,16 +41,30 @@ export default function PaginaAdicionar() {
   });
   const [forma, setForma] = useState<Forma>("pix");
   const [cartaoId, setCartaoId] = useState("");
-  const [parcelas, setParcelas] = useState("1");
+  const [parcelas, setParcelas] = useState(1);
   const [recebida, setRecebida] = useState(false);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   const valor = parseMoeda(valorTexto);
   const valorValido = Number.isFinite(valor) && valor > 0;
-  const nParcelas = Math.max(1, Math.min(48, Math.trunc(Number(parcelas) || 1)));
+
+  // Exibição do valor por parcela (despesa e entrada parceladas).
+  const partes =
+    valorValido && parcelas > 1 ? dividirParcelas(valor, parcelas) : null;
+
+  function limparFormulario() {
+    setValorTexto("");
+    setDescricao("");
+    setForma("pix");
+    setCartaoId("");
+    setParcelas(1);
+    setRecebida(false);
+    setErro("");
+  }
 
   async function salvar() {
+    if (salvando) return;
     if (!valorValido) {
       setErro("Digite um valor maior que zero.");
       return;
@@ -56,41 +73,62 @@ export default function PaginaAdicionar() {
       setErro("Escreva uma descrição.");
       return;
     }
-    if (forma === "cartao" && !cartaoId) {
+    if (modo === "despesa" && forma === "cartao" && !cartaoId) {
       setErro("Escolha o cartão.");
       return;
     }
+
     setSalvando(true);
+    setErro("");
     try {
+      const descricaoLimpa = descricao.trim();
+
       if (modo === "entrada") {
-        await db.entradas.add({
-          id: crypto.randomUUID(),
-          descricao: descricao.trim(),
-          valor,
-          mes,
-          recebida,
-        });
-      } else if (forma === "cartao" && nParcelas > 1) {
-        const compraId = crypto.randomUUID();
-        const partes = dividirParcelas(valor, nParcelas);
-        await db.despesas.bulkAdd(
-          partes.map((parte, i) => ({
+        if (parcelas > 1) {
+          const grupoId = crypto.randomUUID();
+          const valores = dividirParcelas(valor, parcelas);
+          await db.entradas.bulkAdd(
+            valores.map((parte, i) => ({
+              id: crypto.randomUUID(),
+              descricao: descricaoLimpa,
+              valor: parte,
+              mes: somarMes(mes, i),
+              recebida: false,
+              grupoId,
+              parcela: i + 1,
+              parcelas,
+            }))
+          );
+        } else {
+          await db.entradas.add({
             id: crypto.randomUUID(),
-            descricao: descricao.trim(),
+            descricao: descricaoLimpa,
+            valor,
+            mes,
+            recebida,
+          });
+        }
+      } else if (parcelas > 1) {
+        const compraId = crypto.randomUUID();
+        const valores = dividirParcelas(valor, parcelas);
+        await db.despesas.bulkAdd(
+          valores.map((parte, i) => ({
+            id: crypto.randomUUID(),
+            descricao: descricaoLimpa,
             valor: parte,
             mes: somarMes(mes, i),
-            forma: "cartao" as Forma,
-            cartaoId,
+            forma,
+            ...(forma === "cartao" ? { cartaoId } : {}),
             compraId,
             parcela: i + 1,
-            parcelas: nParcelas,
+            parcelas,
             paga: false,
           }))
         );
       } else {
         await db.despesas.add({
           id: crypto.randomUUID(),
-          descricao: descricao.trim(),
+          descricao: descricaoLimpa,
           valor,
           mes,
           forma,
@@ -98,9 +136,14 @@ export default function PaginaAdicionar() {
           paga: false,
         });
       }
+
+      // Feedback mínimo de salvamento antes de liberar o botão.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      limparFormulario();
       router.push("/");
     } catch {
       setErro("Não foi possível salvar. Tente de novo.");
+    } finally {
       setSalvando(false);
     }
   }
@@ -133,10 +176,15 @@ export default function PaginaAdicionar() {
                 setModo(m);
                 setErro("");
               }}
-              className={`botao-min rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-colors ${
+              className={`botao-min flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-colors ${
                 modo === m ? "bg-surface text-foreground shadow-sm" : "text-foreground/60"
               }`}
             >
+              {m === "despesa" ? (
+                <IconeCartao className="h-4 w-4" />
+              ) : (
+                <IconeEntrada className="h-4 w-4" />
+              )}
               {m === "despesa" ? "Despesa" : "Entrada"}
             </button>
           ))}
@@ -151,12 +199,13 @@ export default function PaginaAdicionar() {
         >
           <div className="flex flex-col gap-1">
             <label htmlFor="valor" className="text-sm font-medium">
-              Valor {modo === "despesa" && nParcelas > 1 ? "total" : ""} (R$)
+              Valor {parcelas > 1 ? "total" : ""} (R$)
             </label>
             <input
               id="valor"
               inputMode="decimal"
               autoComplete="off"
+              disabled={salvando}
               value={valorTexto}
               onChange={(e) => {
                 setValorTexto(e.target.value);
@@ -166,9 +215,9 @@ export default function PaginaAdicionar() {
               aria-invalid={!!erro && !valorValido}
               className={`${inputClasse} text-lg font-semibold tabular-nums`}
             />
-            {modo === "despesa" && forma === "cartao" && valorValido && nParcelas > 1 && (
+            {partes && (
               <p className="text-xs text-foreground/50">
-                {nParcelas}x de {formatarMoeda(dividirParcelas(valor, nParcelas)[0])}
+                {parcelas}x de {formatarMoeda(partes[0])}
               </p>
             )}
           </div>
@@ -181,14 +230,13 @@ export default function PaginaAdicionar() {
               id="descricao"
               autoComplete="off"
               maxLength={80}
+              disabled={salvando}
               value={descricao}
               onChange={(e) => {
                 setDescricao(e.target.value);
                 setErro("");
               }}
-              placeholder={
-                modo === "despesa" ? "Ex.: Internet" : "Ex.: Salário"
-              }
+              placeholder={modo === "despesa" ? "Ex.: Internet" : "Ex.: Salário"}
               className={inputClasse}
             />
           </div>
@@ -211,6 +259,7 @@ export default function PaginaAdicionar() {
               <input
                 id="mes"
                 readOnly
+                disabled={salvando}
                 value={nomeMes(mes)}
                 aria-readonly="true"
                 className={`${inputClasse} flex-1 text-center`}
@@ -228,92 +277,99 @@ export default function PaginaAdicionar() {
             </div>
           </div>
 
-          {modo === "despesa" ? (
-            <>
-              <fieldset className="flex flex-col gap-2">
-                <legend className="text-sm font-medium">Pagou com</legend>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["pix", "Pix"],
-                      ["boleto", "Boleto"],
-                      ["cartao", "Cartão"],
-                    ] as const
-                  ).map(([f, rotulo]) => (
-                    <button
-                      key={f}
-                      type="button"
-                      role="radio"
-                      aria-checked={forma === f}
-                      onClick={() => {
-                        setForma(f);
-                        setErro("");
-                      }}
-                      className={`botao-min rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                        forma === f
-                          ? "border-previsao bg-previsao text-white"
-                          : "border-borda bg-surface text-foreground/70"
-                      }`}
-                    >
-                      {rotulo}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+          {/* Parcelas: vale para despesa e entrada */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="parcelas" className="text-sm font-medium">
+              {modo === "despesa" ? "Pagar" : "Receber"}
+            </label>
+            <select
+              id="parcelas"
+              disabled={salvando}
+              value={parcelas}
+              onChange={(e) => setParcelas(Number(e.target.value))}
+              className={inputClasse}
+            >
+              {OPCOES_PARCELAS.map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? "1x (à vista)" : `${n}x`}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              {forma === "cartao" && (
-                <div className="flex flex-col gap-4 rounded-2xl bg-surface p-4 shadow-sm">
-                  {cartoes.length === 0 ? (
-                    <p className="text-sm text-foreground/60">
-                      Você ainda não tem cartões. Adicione em Ajustes.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="cartao" className="text-sm font-medium">
-                        Cartão
-                      </label>
-                      <select
-                        id="cartao"
-                        value={cartaoId}
-                        onChange={(e) => {
-                          setCartaoId(e.target.value);
-                          setErro("");
-                        }}
-                        className={inputClasse}
-                      >
-                        <option value="">Selecione…</option>
-                        {cartoes.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nome}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="parcelas" className="text-sm font-medium">
-                      Parcelas
-                    </label>
-                    <select
-                      id="parcelas"
-                      value={parcelas}
-                      onChange={(e) => setParcelas(e.target.value)}
-                      className={inputClasse}
-                    >
-                      {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
-                        <option key={n} value={n}>
-                          {n === 1 ? "À vista" : `${n}x`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+          {modo === "despesa" && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">Pagou com</legend>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ["pix", "Pix", <IconePix key="pix" className="h-5 w-5" />],
+                    ["boleto", "Boleto", <IconeBoleto key="boleto" className="h-5 w-5" />],
+                    ["cartao", "Cartão", <IconeCartao key="cartao" className="h-5 w-5" />],
+                  ] as const
+                ).map(([f, rotulo, icone]) => (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={forma === f}
+                    disabled={salvando}
+                    onClick={() => {
+                      setForma(f);
+                      setErro("");
+                    }}
+                    className={`botao-min flex flex-col items-center justify-center gap-1 rounded-xl border px-3 py-2.5 text-xs font-semibold transition-colors ${
+                      forma === f
+                        ? "border-previsao bg-previsao text-white"
+                        : "border-borda bg-campo text-foreground/70"
+                    }`}
+                  >
+                    {icone}
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
+
+          {modo === "despesa" && forma === "cartao" && (
+            <div className="flex flex-col gap-4 rounded-2xl bg-surface p-4 shadow-sm">
+              {cartoes.length === 0 ? (
+                <p className="text-sm text-foreground/60">
+                  Você ainda não tem cartões. Adicione em Ajustes.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="cartao" className="text-sm font-medium">
+                    Cartão
+                  </label>
+                  <select
+                    id="cartao"
+                    disabled={salvando}
+                    value={cartaoId}
+                    onChange={(e) => {
+                      setCartaoId(e.target.value);
+                      setErro("");
+                    }}
+                    className={inputClasse}
+                  >
+                    <option value="">Selecione…</option>
+                    {cartoes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
-            </>
-          ) : (
+            </div>
+          )}
+
+          {modo === "entrada" && parcelas === 1 && (
             <label className="flex items-center gap-3 rounded-2xl bg-surface p-4 shadow-sm">
               <input
                 type="checkbox"
+                disabled={salvando}
                 checked={recebida}
                 onChange={(e) => setRecebida(e.target.checked)}
                 className="h-6 w-6 accent-menta-escura"
@@ -327,7 +383,18 @@ export default function PaginaAdicionar() {
           </p>
 
           <button type="submit" disabled={salvando} className={botaoPrimario}>
-            {salvando ? "Salvando…" : "Salvar"}
+            {salvando ? (
+              <span className="inline-flex items-center gap-1">
+                Salvando
+                <span className="pontinhos" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </span>
+            ) : (
+              "Salvar"
+            )}
           </button>
         </form>
       </main>

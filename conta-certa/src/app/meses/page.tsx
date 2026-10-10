@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Abas } from "@/components/Abas";
 import { consolidar } from "@/lib/calculo";
-import { formatarMoeda, nomeMesCurto } from "@/lib/mes";
+import { formatarMoeda, nomeMesAno } from "@/lib/mes";
 import { useDados } from "@/lib/useDados";
 
 export default function PaginaMeses() {
@@ -55,7 +55,7 @@ export default function PaginaMeses() {
                   className="block rounded-2xl bg-surface p-4 shadow-sm transition-colors hover:bg-menta/10"
                 >
                   <div className="flex items-baseline justify-between gap-2">
-                    <h2 className="text-[15px] font-bold capitalize">{nomeMesCurto(r.mes)}</h2>
+                    <h2 className="text-[15px] font-bold">{nomeMesAno(r.mes)}</h2>
                     <span
                       className={`text-[15px] font-semibold tabular-nums ${
                         r.previsao < 0 ? "text-despesa" : "text-previsao"

@@ -24,6 +24,9 @@ export interface Entrada {
   valor: number; // centavos
   mes: string;
   recebida: boolean;
+  grupoId?: string; // agrupa parcelas de uma mesma entrada
+  parcela?: number; // 1..parcelas
+  parcelas?: number;
 }
 
 export interface Config {

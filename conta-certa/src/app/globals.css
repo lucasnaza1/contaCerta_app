@@ -11,6 +11,7 @@
   --borda: rgba(5, 33, 30, 0.12);
   --previsao: #0c6b54;
   --despesa: #d63b2f;
+  --entrada: #1d4ed8;
   --neutra: #7a918b;
 }
 
@@ -23,6 +24,7 @@
   --borda: rgba(231, 244, 238, 0.14);
   --previsao: #6fe3bd;
   --despesa: #ff8a7a;
+  --entrada: #7ea6ff;
   --neutra: #8aa39b;
 }
 
@@ -34,6 +36,7 @@
   --color-borda: var(--borda);
   --color-previsao: var(--previsao);
   --color-despesa: var(--despesa);
+  --color-entrada: var(--entrada);
   --color-neutra: var(--neutra);
   --color-menta: #5eeac0;
   --color-menta-escura: #0c6b54;
@@ -69,7 +72,43 @@ input:-webkit-autofill:focus {
   min-width: 44px;
 }
 
+/* "Salvando" com três pontinhos animados */
+@keyframes ponto-pulsa {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pontinhos > span {
+  display: inline-block;
+  width: 0.3em;
+  height: 0.3em;
+  margin-left: 0.14em;
+  border-radius: 9999px;
+  background-color: currentColor;
+  animation: ponto-pulsa 1.2s infinite ease-in-out;
+}
+
+.pontinhos > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.pontinhos > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .pontinhos > span {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

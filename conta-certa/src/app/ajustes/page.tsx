@@ -2,19 +2,21 @@
 
 import { useRef, useState } from "react";
 import { Abas } from "@/components/Abas";
+import { CampoMoeda } from "@/components/CampoMoeda";
 import { db, exportarBackup, importarBackup, salvarConfig } from "@/lib/db";
-import { formatarMoeda, parseMoeda } from "@/lib/mes";
+import { formatarMoeda } from "@/lib/mes";
 import type { Backup, Cartao } from "@/lib/types";
 import { useDados } from "@/lib/useDados";
 import { useModoEscuro } from "@/lib/useModoEscuro";
 
 const inputClasse =
-  "botao-min w-full rounded-xl border border-borda bg-campo px-4 py-2.5 text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+  "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-4 py-2.5 text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
 
 export default function PaginaAjustes() {
   const { carregando, config, cartoes, despesas } = useDados();
   const { escuro, alternar } = useModoEscuro();
-  const [saldoTexto, setSaldoTexto] = useState<string | null>(null);
+  // null = ainda não editado: mostra o saldo salvo como ponto de partida.
+  const [saldoEdicao, setSaldoEdicao] = useState<number | null>(null);
   const [nomeCartao, setNomeCartao] = useState("");
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
@@ -44,16 +46,14 @@ export default function PaginaAjustes() {
   }
 
   const configAtual = config;
-  // Preenche o campo com o saldo salvo na primeira renderização pós-carregamento.
-  const saldoCampo = saldoTexto ?? (configAtual.saldoInicial / 100).toFixed(2).replace(".", ",");
+  const saldoCampo = saldoEdicao ?? configAtual.saldoInicial;
 
   async function salvarSaldo() {
-    const valor = parseMoeda(saldoCampo);
-    if (!Number.isFinite(valor) || valor < 0) {
+    if (saldoCampo < 0) {
       setErro("Digite um saldo válido.");
       return;
     }
-    await salvarConfig({ saldoInicial: valor, mesInicial: configAtual.mesInicial });
+    await salvarConfig({ saldoInicial: saldoCampo, mesInicial: configAtual.mesInicial });
     setErro("");
     setAviso("Saldo inicial salvo.");
   }
@@ -158,22 +158,22 @@ export default function PaginaAjustes() {
             <h2 id="titulo-saldo" className="text-[15px] font-bold">
               Saldo inicial
             </h2>
-            <div className="flex gap-2">
-              <input
-                aria-label="Saldo inicial em reais"
-                inputMode="decimal"
-                value={saldoCampo}
-                onChange={(e) => {
-                  setSaldoTexto(e.target.value);
+            <div className="flex flex-wrap items-end gap-2">
+              <CampoMoeda
+                id="saldo-inicial"
+                rotulo="Quanto você tinha"
+                valorCentavos={saldoCampo}
+                onValor={(c) => {
+                  setSaldoEdicao(c);
                   setErro("");
                   setAviso("");
                 }}
-                className={`${inputClasse} tabular-nums`}
+                className="min-w-0 flex-1 basis-44"
               />
               <button
                 type="button"
                 onClick={salvarSaldo}
-                className="botao-min shrink-0 rounded-xl bg-previsao px-4 py-2 text-sm font-semibold text-white"
+                className="botao-min shrink-0 rounded-xl bg-previsao px-4 py-2.5 text-sm font-semibold text-white"
               >
                 Salvar
               </button>

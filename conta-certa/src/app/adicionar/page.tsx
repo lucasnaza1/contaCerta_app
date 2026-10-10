@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Abas } from "@/components/Abas";
+import { CampoMoeda } from "@/components/CampoMoeda";
 import { IconeBoleto, IconeCartao, IconeEntrada, IconePix } from "@/components/icones";
 import { db } from "@/lib/db";
 import {
@@ -11,7 +12,6 @@ import {
   mesAtual,
   mesValido,
   nomeMes,
-  parseMoeda,
   somarMes,
 } from "@/lib/mes";
 import type { Forma } from "@/lib/types";
@@ -20,7 +20,7 @@ import { useDados } from "@/lib/useDados";
 type Modo = "despesa" | "entrada";
 
 const inputClasse =
-  "botao-min w-full rounded-xl border border-borda bg-campo px-4 py-2.5 text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+  "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-4 py-2.5 text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
 const botaoPrimario =
   "botao-min w-full rounded-xl bg-previsao px-4 py-3 text-base font-semibold text-white hover:opacity-90 disabled:opacity-60";
 
@@ -31,7 +31,7 @@ export default function PaginaAdicionar() {
   const { carregando, cartoes } = useDados();
 
   const [modo, setModo] = useState<Modo>("despesa");
-  const [valorTexto, setValorTexto] = useState("");
+  const [valorCentavos, setValorCentavos] = useState(0);
   const [descricao, setDescricao] = useState("");
   // Mês vem da query (?mes=2026-10) quando aberto a partir da tela Mês.
   const [mes, setMes] = useState(() => {
@@ -46,15 +46,11 @@ export default function PaginaAdicionar() {
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const valor = parseMoeda(valorTexto);
-  const valorValido = Number.isFinite(valor) && valor > 0;
-
-  // Exibição do valor por parcela (despesa e entrada parceladas).
-  const partes =
-    valorValido && parcelas > 1 ? dividirParcelas(valor, parcelas) : null;
+  const valorValido = valorCentavos > 0;
+  const partes = valorValido && parcelas > 1 ? dividirParcelas(valorCentavos, parcelas) : null;
 
   function limparFormulario() {
-    setValorTexto("");
+    setValorCentavos(0);
     setDescricao("");
     setForma("pix");
     setCartaoId("");
@@ -86,7 +82,7 @@ export default function PaginaAdicionar() {
       if (modo === "entrada") {
         if (parcelas > 1) {
           const grupoId = crypto.randomUUID();
-          const valores = dividirParcelas(valor, parcelas);
+          const valores = dividirParcelas(valorCentavos, parcelas);
           await db.entradas.bulkAdd(
             valores.map((parte, i) => ({
               id: crypto.randomUUID(),
@@ -103,14 +99,14 @@ export default function PaginaAdicionar() {
           await db.entradas.add({
             id: crypto.randomUUID(),
             descricao: descricaoLimpa,
-            valor,
+            valor: valorCentavos,
             mes,
             recebida,
           });
         }
       } else if (parcelas > 1) {
         const compraId = crypto.randomUUID();
-        const valores = dividirParcelas(valor, parcelas);
+        const valores = dividirParcelas(valorCentavos, parcelas);
         await db.despesas.bulkAdd(
           valores.map((parte, i) => ({
             id: crypto.randomUUID(),
@@ -129,7 +125,7 @@ export default function PaginaAdicionar() {
         await db.despesas.add({
           id: crypto.randomUUID(),
           descricao: descricaoLimpa,
-          valor,
+          valor: valorCentavos,
           mes,
           forma,
           ...(forma === "cartao" ? { cartaoId } : {}),
@@ -197,30 +193,20 @@ export default function PaginaAdicionar() {
             salvar();
           }}
         >
-          <div className="flex flex-col gap-1">
-            <label htmlFor="valor" className="text-sm font-medium">
-              Valor {parcelas > 1 ? "total" : ""} (R$)
-            </label>
-            <input
-              id="valor"
-              inputMode="decimal"
-              autoComplete="off"
-              disabled={salvando}
-              value={valorTexto}
-              onChange={(e) => {
-                setValorTexto(e.target.value);
-                setErro("");
-              }}
-              placeholder="0,00"
-              aria-invalid={!!erro && !valorValido}
-              className={`${inputClasse} text-lg font-semibold tabular-nums`}
-            />
-            {partes && (
-              <p className="text-xs text-foreground/50">
-                {parcelas}x de {formatarMoeda(partes[0])}
-              </p>
-            )}
-          </div>
+          <CampoMoeda
+            id="valor"
+            rotulo={`Valor ${parcelas > 1 ? "total" : ""}`}
+            valorCentavos={valorCentavos}
+            onValor={(c) => {
+              setValorCentavos(c);
+              setErro("");
+            }}
+            disabled={salvando}
+            invalido={!!erro && !valorValido}
+            descricao={
+              partes ? `${parcelas}x de ${formatarMoeda(partes[0])}` : undefined
+            }
+          />
 
           <div className="flex flex-col gap-1">
             <label htmlFor="descricao" className="text-sm font-medium">
@@ -243,14 +229,14 @@ export default function PaginaAdicionar() {
 
           <div className="flex flex-col gap-1">
             <label htmlFor="mes" className="text-sm font-medium">
-              Mês
+              Mês de {modo === "despesa" ? "pagamento" : "recebimento"}
             </label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setMes(somarMes(mes, -1))}
                 aria-label="Mês anterior"
-                className="botao-min rounded-full hover:bg-foreground/5"
+                className="botao-min shrink-0 rounded-full hover:bg-foreground/5"
               >
                 <span aria-hidden className="text-xl">
                   ‹
@@ -262,17 +248,35 @@ export default function PaginaAdicionar() {
                 disabled={salvando}
                 value={nomeMes(mes)}
                 aria-readonly="true"
-                className={`${inputClasse} flex-1 text-center`}
+                className={`${inputClasse} min-w-0 flex-1 text-center`}
               />
               <button
                 type="button"
                 onClick={() => setMes(somarMes(mes, 1))}
                 aria-label="Próximo mês"
-                className="botao-min rounded-full hover:bg-foreground/5"
+                className="botao-min shrink-0 rounded-full hover:bg-foreground/5"
               >
                 <span aria-hidden className="text-xl">
                   ›
                 </span>
+              </button>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={salvando || mes === mesAtual()}
+                onClick={() => setMes(mesAtual())}
+                className="rounded-full px-3 py-1 text-xs font-medium text-previsao hover:bg-menta/20 disabled:opacity-40"
+              >
+                Mês atual
+              </button>
+              <button
+                type="button"
+                disabled={salvando || mes === somarMes(mesAtual(), 1)}
+                onClick={() => setMes(somarMes(mesAtual(), 1))}
+                className="rounded-full px-3 py-1 text-xs font-medium text-previsao hover:bg-menta/20 disabled:opacity-40"
+              >
+                Próximo mês
               </button>
             </div>
           </div>

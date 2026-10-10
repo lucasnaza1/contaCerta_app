@@ -82,6 +82,25 @@ export function parseMoeda(texto: string): number {
   return Number.isFinite(valor) ? Math.round(valor * 100) : NaN;
 }
 
+/** 123456 (centavos) -> "1.234,56" (sem prefixo; para máscara de campo) */
+export function formatarNumero(centavos: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(centavos / 100);
+}
+
+/**
+ * Máscara bancária: extrai só os dígitos, interpreta os 2 últimos como
+ * centavos e devolve texto formatado + valor em centavos.
+ * "1234" -> { texto: "12,34", centavos: 1234 }
+ */
+export function aplicarMascaraMoeda(texto: string): { texto: string; centavos: number } {
+  const digitos = texto.replace(/\D/g, "").slice(0, 11);
+  const centavos = Number(digitos || 0);
+  return { texto: digitos ? formatarNumero(centavos) : "", centavos };
+}
+
 /** Divide um total em centavos em n parcelas, diferença na última. */
 export function dividirParcelas(total: number, n: number): number[] {
   const base = Math.floor(total / n);

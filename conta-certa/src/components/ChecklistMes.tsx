@@ -37,7 +37,7 @@ function ItemDespesa({ despesa, cartoes, mesFuturo }: ItemDespesaProps) {
         type="button"
         onClick={alternar}
         aria-pressed={despesa.paga}
-        className="flex w-full items-center gap-3 py-2.5 text-left"
+        className="flex w-full min-w-0 items-center gap-3 py-2.5 text-left"
       >
         <span
           role="img"
@@ -110,7 +110,7 @@ function ItemEntrada({ entrada, mesFuturo }: ItemEntradaProps) {
         type="button"
         onClick={alternar}
         aria-pressed={entrada.recebida}
-        className="flex w-full items-center gap-3 py-2.5 text-left"
+        className="flex w-full min-w-0 items-center gap-3 py-2.5 text-left"
       >
         <span
           role="img"

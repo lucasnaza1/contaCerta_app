@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { CampoMoeda } from "@/components/CampoMoeda";
 import { db, salvarConfig } from "@/lib/db";
-import { formatarMoeda, mesAtual, parseMoeda } from "@/lib/mes";
+import { formatarMoeda, mesAtual } from "@/lib/mes";
 import type { Cartao } from "@/lib/types";
 
 interface CadastroInicialProps {
@@ -11,14 +12,11 @@ interface CadastroInicialProps {
 
 /** Cadastro rápido: quanto você tem hoje + cartões (opcional). */
 export function CadastroInicial({ onPronto }: CadastroInicialProps) {
-  const [saldoTexto, setSaldoTexto] = useState("");
+  const [saldoCentavos, setSaldoCentavos] = useState(0);
   const [nomeCartao, setNomeCartao] = useState("");
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-
-  const saldo = parseMoeda(saldoTexto);
-  const saldoValido = Number.isFinite(saldo) && saldo >= 0;
 
   async function adicionarCartao() {
     const nome = nomeCartao.trim();
@@ -31,16 +29,16 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
   }
 
   async function finalizar(pularCartoes: boolean) {
-    if (!saldoValido) {
+    if (saldoCentavos <= 0) {
       setErro("Digite quanto você tem hoje (ex.: 1500,00).");
       return;
     }
     setSalvando(true);
     try {
       const lista = pularCartoes ? [] : cartoes;
-      await salvarConfig({ saldoInicial: saldo, mesInicial: mesAtual() });
+      await salvarConfig({ saldoInicial: saldoCentavos, mesInicial: mesAtual() });
       if (lista.length) await db.cartoes.bulkPut(lista);
-      onPronto(saldo);
+      onPronto(saldoCentavos);
     } finally {
       setSalvando(false);
     }
@@ -55,28 +53,21 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <label htmlFor="saldo" className="text-sm font-medium text-foreground">
-          Quanto você tem hoje?
-        </label>
-        <input
-          id="saldo"
-          inputMode="decimal"
-          autoComplete="off"
-          value={saldoTexto}
-          onChange={(e) => {
-            setSaldoTexto(e.target.value);
-            setErro("");
-          }}
-          placeholder="0,00"
-          aria-invalid={!!erro}
-          aria-describedby={erro ? "saldo-erro" : undefined}
-          className="botao-min rounded-xl border border-borda bg-campo px-4 py-3 text-lg font-semibold tabular-nums outline-none focus:border-previsao focus:ring-2 focus:ring-menta"
-        />
-        <p id="saldo-erro" aria-live="polite" className="min-h-5 text-sm text-despesa">
-          {erro}
-        </p>
-      </div>
+      <CampoMoeda
+        id="saldo"
+        rotulo="Quanto você tem hoje?"
+        valorCentavos={saldoCentavos}
+        onValor={(c) => {
+          setSaldoCentavos(c);
+          setErro("");
+        }}
+        disabled={salvando}
+        invalido={!!erro && saldoCentavos <= 0}
+        className="gap-2 [&_input]:py-3 [&_input]:text-lg"
+      />
+      <p id="saldo-erro" aria-live="polite" className="min-h-5 text-sm text-despesa">
+        {erro}
+      </p>
 
       <div className="flex flex-col gap-2">
         <label htmlFor="cartao" className="text-sm font-medium text-foreground">
@@ -136,8 +127,8 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
         >
           {salvando
             ? "Salvando…"
-            : saldoValido
-              ? `Começar com ${formatarMoeda(saldo)}`
+            : saldoCentavos > 0
+              ? `Começar com ${formatarMoeda(saldoCentavos)}`
               : "Começar"}
         </button>
         <button

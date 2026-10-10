@@ -1,0 +1,15 @@
+{
+  "name": "Conta Certa",
+  "short_name": "Conta Certa",
+  "description": "Registre o que ganha e o que gasta, risque o que já pagou e veja o quanto vai sobrar no fim do mês.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F1FBF6",
+  "theme_color": "#5EEAC0",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

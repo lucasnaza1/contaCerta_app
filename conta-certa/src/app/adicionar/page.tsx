@@ -2,19 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Barcode, CreditCard, Plus, QrCode } from "lucide-react";
 import { Abas } from "@/components/Abas";
-import { CampoMoeda } from "@/components/CampoMoeda";
-import { IconeBoleto, IconeCartao, IconeEntrada, IconePix } from "@/components/icones";
-import { db } from "@/lib/db";
-import {
-  dividirParcelas,
-  formatarMoeda,
-  mesAtual,
-  mesValido,
-  nomeMes,
-  somarMes,
-} from "@/lib/mes";
-import type { Forma } from "@/lib/types";
+import { CampoValor } from "@/components/CampoValor";
+import { IconeBanco } from "@/components/IconeBanco";
+import { adicionarDespesa, adicionarEntrada } from "@/lib/repositorio";
+import { formatarBRL } from "@/lib/dinheiro";
+import { dividirParcelas, mesAtual, mesValido, nomeMes, somarMes } from "@/lib/mes";
+import type { Forma } from "@/lib/tipos";
 import { useDados } from "@/lib/useDados";
 
 type Modo = "despesa" | "entrada";
@@ -77,59 +72,23 @@ export default function PaginaAdicionar() {
     setSalvando(true);
     setErro("");
     try {
-      const descricaoLimpa = descricao.trim();
-
       if (modo === "entrada") {
-        if (parcelas > 1) {
-          const grupoId = crypto.randomUUID();
-          const valores = dividirParcelas(valorCentavos, parcelas);
-          await db.entradas.bulkAdd(
-            valores.map((parte, i) => ({
-              id: crypto.randomUUID(),
-              descricao: descricaoLimpa,
-              valor: parte,
-              mes: somarMes(mes, i),
-              recebida: false,
-              grupoId,
-              parcela: i + 1,
-              parcelas,
-            }))
-          );
-        } else {
-          await db.entradas.add({
-            id: crypto.randomUUID(),
-            descricao: descricaoLimpa,
-            valor: valorCentavos,
-            mes,
-            recebida,
-          });
-        }
-      } else if (parcelas > 1) {
-        const compraId = crypto.randomUUID();
-        const valores = dividirParcelas(valorCentavos, parcelas);
-        await db.despesas.bulkAdd(
-          valores.map((parte, i) => ({
-            id: crypto.randomUUID(),
-            descricao: descricaoLimpa,
-            valor: parte,
-            mes: somarMes(mes, i),
-            forma,
-            ...(forma === "cartao" ? { cartaoId } : {}),
-            compraId,
-            parcela: i + 1,
-            parcelas,
-            paga: false,
-          }))
-        );
+        await adicionarEntrada({
+          descricao,
+          valor: valorCentavos,
+          mes,
+          parcelas,
+          // A 1x pode entrar já como recebida; parcelas são sempre a receber.
+          ...(parcelas === 1 ? { recebida } : {}),
+        });
       } else {
-        await db.despesas.add({
-          id: crypto.randomUUID(),
-          descricao: descricaoLimpa,
+        await adicionarDespesa({
+          descricao,
           valor: valorCentavos,
           mes,
           forma,
           ...(forma === "cartao" ? { cartaoId } : {}),
-          paga: false,
+          parcelas,
         });
       }
 
@@ -177,9 +136,9 @@ export default function PaginaAdicionar() {
               }`}
             >
               {m === "despesa" ? (
-                <IconeCartao className="h-4 w-4" />
+                <CreditCard aria-hidden className="h-4 w-4" strokeWidth={2} />
               ) : (
-                <IconeEntrada className="h-4 w-4" />
+                <Plus aria-hidden className="h-4 w-4" strokeWidth={2.5} />
               )}
               {m === "despesa" ? "Despesa" : "Entrada"}
             </button>
@@ -193,18 +152,18 @@ export default function PaginaAdicionar() {
             salvar();
           }}
         >
-          <CampoMoeda
+          <CampoValor
             id="valor"
-            rotulo={`Valor ${parcelas > 1 ? "total" : ""}`}
-            valorCentavos={valorCentavos}
-            onValor={(c) => {
+            label={`Valor ${parcelas > 1 ? "total" : ""}`}
+            centavos={valorCentavos}
+            onCentavos={(c) => {
               setValorCentavos(c);
               setErro("");
             }}
             disabled={salvando}
-            invalido={!!erro && !valorValido}
+            erro={!!erro && !valorValido ? erro : undefined}
             descricao={
-              partes ? `${parcelas}x de ${formatarMoeda(partes[0])}` : undefined
+              partes ? `${parcelas}x de ${formatarBRL(partes[0])}` : undefined
             }
           />
 
@@ -307,9 +266,9 @@ export default function PaginaAdicionar() {
               <div className="grid grid-cols-3 gap-2">
                 {(
                   [
-                    ["pix", "Pix", <IconePix key="pix" className="h-5 w-5" />],
-                    ["boleto", "Boleto", <IconeBoleto key="boleto" className="h-5 w-5" />],
-                    ["cartao", "Cartão", <IconeCartao key="cartao" className="h-5 w-5" />],
+                    ["pix", "Pix", <QrCode key="pix" aria-hidden className="h-5 w-5" strokeWidth={2} />],
+                    ["boleto", "Boleto", <Barcode key="boleto" aria-hidden className="h-5 w-5" strokeWidth={2} />],
+                    ["cartao", "Cartão", <CreditCard key="cartao" aria-hidden className="h-5 w-5" strokeWidth={2} />],
                   ] as const
                 ).map(([f, rotulo, icone]) => (
                   <button
@@ -347,23 +306,31 @@ export default function PaginaAdicionar() {
                   <label htmlFor="cartao" className="text-sm font-medium">
                     Cartão
                   </label>
-                  <select
-                    id="cartao"
-                    disabled={salvando}
-                    value={cartaoId}
-                    onChange={(e) => {
-                      setCartaoId(e.target.value);
-                      setErro("");
-                    }}
-                    className={inputClasse}
-                  >
-                    <option value="">Selecione…</option>
-                    {cartoes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex min-w-0 items-center gap-2">
+                    {(() => {
+                      const c = cartoes.find((x) => x.id === cartaoId);
+                      return c ? (
+                        <IconeBanco nome={c.nome} tamanho={36} className="shrink-0" />
+                      ) : null;
+                    })()}
+                    <select
+                      id="cartao"
+                      disabled={salvando}
+                      value={cartaoId}
+                      onChange={(e) => {
+                        setCartaoId(e.target.value);
+                        setErro("");
+                      }}
+                      className={inputClasse}
+                    >
+                      <option value="">Selecione…</option>
+                      {cartoes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
             </div>

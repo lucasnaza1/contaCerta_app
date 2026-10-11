@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { Abas } from "@/components/Abas";
-import { consolidar } from "@/lib/calculo";
-import { formatarMoeda, nomeMesAno } from "@/lib/mes";
+import { consolidar } from "@/lib/calculos";
+import { formatarBRL } from "@/lib/dinheiro";
+import { nomeMesAno } from "@/lib/mes";
 import { useDados } from "@/lib/useDados";
 
 export default function PaginaMeses() {
@@ -61,7 +62,7 @@ export default function PaginaMeses() {
                         r.previsao < 0 ? "text-despesa" : "text-previsao"
                       }`}
                     >
-                      {formatarMoeda(r.previsao)}
+                      {formatarBRL(r.previsao)}
                     </span>
                   </div>
 
@@ -74,12 +75,12 @@ export default function PaginaMeses() {
                     <div className="flex items-center gap-1.5">
                       <span aria-hidden className="h-2 w-2 rounded-full bg-previsao" />
                       <dt className="sr-only">Entradas</dt>
-                      <dd className="tabular-nums">{formatarMoeda(r.entradas)}</dd>
+                      <dd className="tabular-nums">{formatarBRL(r.entradas)}</dd>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span aria-hidden className="h-2 w-2 rounded-full bg-despesa" />
                       <dt className="sr-only">Despesas</dt>
-                      <dd className="tabular-nums">{formatarMoeda(r.despesas)}</dd>
+                      <dd className="tabular-nums">{formatarBRL(r.despesas)}</dd>
                     </div>
                   </dl>
                 </Link>

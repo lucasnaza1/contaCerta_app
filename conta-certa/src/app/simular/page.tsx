@@ -1,17 +1,18 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Abas } from "@/components/Abas";
-import { CampoMoeda } from "@/components/CampoMoeda";
+import { CampoValor } from "@/components/CampoValor";
 import { db } from "@/lib/db";
 import {
   avaliarPlano,
   calcularSobra,
   projetarAcumulado,
   resumirMes,
-} from "@/lib/calculo";
-import { formatarMoeda, mesAtual, nomeMesAno, somarMes } from "@/lib/mes";
-import type { FixaExterna, Plano } from "@/lib/types";
+} from "@/lib/calculos";
+import { formatarBRL } from "@/lib/dinheiro";
+import { mesAtual, nomeMesAno, somarMes } from "@/lib/mes";
+import type { FixaExterna, Plano } from "@/lib/tipos";
 import { useDados } from "@/lib/useDados";
 
 const inputClasse =
@@ -55,7 +56,7 @@ export default function PaginaSimular() {
     );
   }
 
-  const resumoAtual = resumirMes(config, despesas, entradas, mesRef, mesRef);
+  const resumoAtual = resumirMes(config, despesas, entradas, mesRef);
   const sobra = calcularSobra(resumoAtual.entradas, resumoAtual.despesas, fixasExternas);
   const projecao = projetarAcumulado(sobra, nMeses, rendimento / 100);
   const totalFixas = fixasExternas.reduce((s, f) => s + f.valor, 0);
@@ -116,7 +117,7 @@ export default function PaginaSimular() {
               {fixasExternas.map((f) => (
                 <li key={f.id} className="flex min-w-0 items-center justify-between gap-2 text-sm">
                   <span className="min-w-0 truncate">
-                    {f.nome} · <span className="tabular-nums">{formatarMoeda(f.valor)}</span>
+                    {f.nome} · <span className="tabular-nums">{formatarBRL(f.valor)}</span>
                   </span>
                   <button
                     type="button"
@@ -148,11 +149,11 @@ export default function PaginaSimular() {
                 />
               </div>
               <div className="min-w-0 flex-[2] basis-32">
-                <CampoMoeda
+                <CampoValor
                   id="valor-fixa"
-                  rotulo="Valor/mês"
-                  valorCentavos={valorFixa}
-                  onValor={(c) => {
+                  label="Valor/mês"
+                  centavos={valorFixa}
+                  onCentavos={(c) => {
                     setValorFixa(c);
                     setErroFixa("");
                   }}
@@ -179,12 +180,12 @@ export default function PaginaSimular() {
           </h2>
           <div className="min-w-0 rounded-2xl bg-surface p-4 shadow-sm">
             <p className="text-2xl font-bold tabular-nums text-previsao">
-              {formatarMoeda(sobra)}
+              {formatarBRL(sobra)}
             </p>
             <p className="break-words pt-1 text-xs text-foreground/50">
-              {nomeMesAno(mesRef)}: {formatarMoeda(resumoAtual.entradas)} de entradas −{" "}
-              {formatarMoeda(resumoAtual.despesas)} de despesas do app −{" "}
-              {formatarMoeda(totalFixas)} de fixas de fora
+              {nomeMesAno(mesRef)}: {formatarBRL(resumoAtual.entradas)} de entradas −{" "}
+              {formatarBRL(resumoAtual.despesas)} de despesas do app −{" "}
+              {formatarBRL(totalFixas)} de fixas de fora
             </p>
 
             <div className="flex min-w-0 flex-col gap-4 pt-4 sm:flex-row sm:items-center sm:gap-4">
@@ -218,7 +219,7 @@ export default function PaginaSimular() {
             <p className="break-words pt-3 text-sm text-foreground/70">
               Em {nomeMesAno(somarMes(mesRef, nMeses))}:{" "}
               <strong className="tabular-nums text-previsao">
-                {formatarMoeda(projecao[projecao.length - 1] ?? 0)}
+                {formatarBRL(projecao[projecao.length - 1] ?? 0)}
               </strong>{" "}
               acumulados
             </p>
@@ -239,7 +240,7 @@ export default function PaginaSimular() {
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold">{p.nome}</p>
                       <p className="text-xs text-foreground/50">
-                        {formatarMoeda(p.valorAlvo)} em {p.prazoMeses} meses
+                        {formatarBRL(p.valorAlvo)} em {p.prazoMeses} meses
                       </p>
                     </div>
                     <button
@@ -256,12 +257,12 @@ export default function PaginaSimular() {
                       r.cabeNaSobra ? "text-previsao" : "text-despesa"
                     }`}
                   >
-                    Guardar {formatarMoeda(r.guardarPorMes)}/mês —{" "}
+                    Guardar {formatarBRL(r.guardarPorMes)}/mês —{" "}
                     {r.cabeNaSobra
                       ? "cabe na sua sobra"
                       : r.mesesNecessarios
-                        ? `faltam ${formatarMoeda(r.faltaPorMes)}/mês; com a sobra atual dá em ${r.mesesNecessarios} meses`
-                        : `faltam ${formatarMoeda(r.faltaPorMes)}/mês e não há sobra`}
+                        ? `faltam ${formatarBRL(r.faltaPorMes)}/mês; com a sobra atual dá em ${r.mesesNecessarios} meses`
+                        : `faltam ${formatarBRL(r.faltaPorMes)}/mês e não há sobra`}
                   </p>
                 </div>
               );
@@ -285,11 +286,11 @@ export default function PaginaSimular() {
                   />
                 </div>
                 <div className="min-w-0 flex-[2] basis-32">
-                  <CampoMoeda
+                  <CampoValor
                     id="valor-plano"
-                    rotulo="Valor-alvo"
-                    valorCentavos={valorPlano}
-                    onValor={(c) => {
+                    label="Valor-alvo"
+                    centavos={valorPlano}
+                    onCentavos={(c) => {
                       setValorPlano(c);
                       setErroPlano("");
                     }}

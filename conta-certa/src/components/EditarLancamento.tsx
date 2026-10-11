@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CampoMoeda } from "@/components/CampoMoeda";
-import { IconeBoleto, IconeCartao, IconeEntrada, IconePix } from "@/components/icones";
-import { db } from "@/lib/db";
-import { formatarMoeda, nomeMes, somarMes } from "@/lib/mes";
-import type { Cartao, Despesa, Entrada, Forma } from "@/lib/types";
+import { Barcode, CreditCard, Plus, QrCode, Trash2 } from "lucide-react";
+import { CampoValor } from "@/components/CampoValor";
+import { IconeBanco } from "@/components/IconeBanco";
+import { editarDespesa, editarEntrada, excluirDespesa, excluirEntrada } from "@/lib/repositorio";
+import { formatarBRL } from "@/lib/dinheiro";
+import { nomeMes, somarMes } from "@/lib/mes";
+import type { Cartao, Despesa, Entrada, Forma } from "@/lib/tipos";
 
 const inputClasse =
   "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-4 py-2.5 text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
@@ -98,56 +100,24 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
     setSalvando(true);
     setErro("");
     try {
-      const descricaoLimpa = descricao.trim();
-
       if (eDespesa) {
-        if (despesa.compraId) {
-          const parcelas = await db.despesas
-            .where("compraId")
-            .equals(despesa.compraId)
-            .sortBy("parcela");
-          await Promise.all(
-            parcelas.map((p) =>
-              db.despesas.update(p.id, {
-                descricao: descricaoLimpa,
-                valor: valorCentavos,
-                mes: somarMes(mes, (p.parcela ?? 1) - 1),
-                forma,
-                ...(forma === "cartao" ? { cartaoId } : { cartaoId: undefined }),
-              })
-            )
-          );
-        } else {
-          await db.despesas.update(despesa.id, {
-            descricao: descricaoLimpa,
+        await editarDespesa(
+          despesa.id,
+          {
+            descricao: descricao.trim(),
             valor: valorCentavos,
             mes,
             forma,
             ...(forma === "cartao" ? { cartaoId } : { cartaoId: undefined }),
-          });
-        }
+          },
+          "todas"
+        );
       } else {
-        if (entrada.grupoId) {
-          const parcelas = await db.entradas
-            .where("grupoId")
-            .equals(entrada.grupoId)
-            .sortBy("parcela");
-          await Promise.all(
-            parcelas.map((p) =>
-              db.entradas.update(p.id, {
-                descricao: descricaoLimpa,
-                valor: valorCentavos,
-                mes: somarMes(mes, (p.parcela ?? 1) - 1),
-              })
-            )
-          );
-        } else {
-          await db.entradas.update(entrada.id, {
-            descricao: descricaoLimpa,
-            valor: valorCentavos,
-            mes,
-          });
-        }
+        await editarEntrada(
+          entrada.id,
+          { descricao: descricao.trim(), valor: valorCentavos, mes },
+          "todas"
+        );
       }
       onFechar();
     } catch {
@@ -162,17 +132,9 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
     setExcluindo(true);
     try {
       if (eDespesa) {
-        if (despesa.compraId) {
-          await db.despesas.where("compraId").equals(despesa.compraId).delete();
-        } else {
-          await db.despesas.delete(despesa.id);
-        }
+        await excluirDespesa(despesa.id, "todas");
       } else {
-        if (entrada.grupoId) {
-          await db.entradas.where("grupoId").equals(entrada.grupoId).delete();
-        } else {
-          await db.entradas.delete(entrada.id);
-        }
+        await excluirEntrada(entrada.id, "todas");
       }
       onFechar();
     } catch {
@@ -202,7 +164,11 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
             }`}
             aria-hidden
           >
-            {eDespesa ? <IconeCartao className="h-4 w-4" /> : <IconeEntrada className="h-4 w-4" />}
+            {eDespesa ? (
+              <CreditCard aria-hidden className="h-4 w-4" strokeWidth={2} />
+            ) : (
+              <Plus aria-hidden className="h-4 w-4" strokeWidth={2.5} />
+            )}
           </span>
           <h2 className="text-lg font-bold">
             {eDespesa ? "Editar despesa" : "Editar entrada"}
@@ -216,18 +182,18 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
             </p>
           )}
 
-          <CampoMoeda
+          <CampoValor
             id="editar-valor"
-            rotulo={ehGrupo ? "Valor de cada parcela" : "Valor"}
-            valorCentavos={valorCentavos}
-            onValor={(c) => {
+            label={ehGrupo ? "Valor de cada parcela" : "Valor"}
+            centavos={valorCentavos}
+            onCentavos={(c) => {
               setValorCentavos(c);
               setErro("");
             }}
             disabled={salvando || excluindo}
-            invalido={!!erro && valorCentavos <= 0}
+            erro={!!erro && valorCentavos <= 0 ? erro : undefined}
             descricao={
-              ehGrupo ? `Total do grupo: ${formatarMoeda(valorCentavos * nParcelas)}` : undefined
+              ehGrupo ? `Total do grupo: ${formatarBRL(valorCentavos * nParcelas)}` : undefined
             }
           />
 
@@ -293,9 +259,9 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
               <div className="grid grid-cols-3 gap-2">
                 {(
                   [
-                    ["pix", "Pix", <IconePix key="pix" className="h-5 w-5" />],
-                    ["boleto", "Boleto", <IconeBoleto key="boleto" className="h-5 w-5" />],
-                    ["cartao", "Cartão", <IconeCartao key="cartao" className="h-5 w-5" />],
+                    ["pix", "Pix", <QrCode key="pix" aria-hidden className="h-5 w-5" strokeWidth={2} />],
+                    ["boleto", "Boleto", <Barcode key="boleto" aria-hidden className="h-5 w-5" strokeWidth={2} />],
+                    ["cartao", "Cartão", <CreditCard key="cartao" aria-hidden className="h-5 w-5" strokeWidth={2} />],
                   ] as const
                 ).map(([f, rotulo, icone]) => (
                   <button
@@ -327,23 +293,31 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
               <label htmlFor="editar-cartao" className="text-sm font-medium">
                 Cartão
               </label>
-              <select
-                id="editar-cartao"
-                disabled={salvando || excluindo}
-                value={cartaoId}
-                onChange={(e) => {
-                  setCartaoId(e.target.value);
-                  setErro("");
-                }}
-                className={inputClasse}
-              >
-                <option value="">Selecione…</option>
-                {cartoes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
+              <div className="flex min-w-0 items-center gap-2">
+                {(() => {
+                  const c = cartoes.find((x) => x.id === cartaoId);
+                  return c ? (
+                    <IconeBanco nome={c.nome} tamanho={36} className="shrink-0" />
+                  ) : null;
+                })()}
+                <select
+                  id="editar-cartao"
+                  disabled={salvando || excluindo}
+                  value={cartaoId}
+                  onChange={(e) => {
+                    setCartaoId(e.target.value);
+                    setErro("");
+                  }}
+                  className={inputClasse}
+                >
+                  <option value="">Selecione…</option>
+                  {cartoes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
@@ -403,8 +377,9 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
               type="button"
               onClick={() => setConfirmando(true)}
               disabled={salvando || excluindo}
-              className="botao-min w-full rounded-xl px-4 py-2 text-sm font-medium text-despesa hover:bg-despesa/10 disabled:opacity-60"
+              className="botao-min flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-despesa hover:bg-despesa/10 disabled:opacity-60"
             >
+              <Trash2 aria-hidden className="h-4 w-4" />
               Excluir {ehGrupo ? "todas as parcelas" : ""}
             </button>
           )}

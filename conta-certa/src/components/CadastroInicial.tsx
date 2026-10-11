@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CampoMoeda } from "@/components/CampoMoeda";
+import { CampoValor } from "@/components/CampoValor";
+import { IconeBanco } from "@/components/IconeBanco";
 import { db, salvarConfig } from "@/lib/db";
-import { formatarMoeda, mesAtual } from "@/lib/mes";
-import type { Cartao } from "@/lib/types";
+import { formatarBRL } from "@/lib/dinheiro";
+import { mesAtual } from "@/lib/mes";
+import type { Cartao } from "@/lib/tipos";
 
 interface CadastroInicialProps {
   onPronto: (saldo: number) => void;
@@ -53,17 +55,17 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
         </p>
       </div>
 
-      <CampoMoeda
+      <CampoValor
         id="saldo"
-        rotulo="Quanto você tem hoje?"
-        valorCentavos={saldoCentavos}
-        onValor={(c) => {
+        label="Quanto você tem hoje?"
+        centavos={saldoCentavos}
+        onCentavos={(c) => {
           setSaldoCentavos(c);
           setErro("");
         }}
         disabled={salvando}
-        invalido={!!erro && saldoCentavos <= 0}
-        className="gap-2 [&_input]:py-3 [&_input]:text-lg"
+        erro={!!erro && saldoCentavos <= 0 ? erro : undefined}
+        autoFocus
       />
       <p id="saldo-erro" aria-live="polite" className="min-h-5 text-sm text-despesa">
         {erro}
@@ -104,9 +106,10 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
                 <button
                   type="button"
                   onClick={() => setCartoes(cartoes.filter((x) => x.id !== c.id))}
-                  className="botao-min flex items-center gap-2 rounded-full bg-surface px-3 py-1.5 text-sm font-medium shadow-sm"
+                  className="botao-min flex items-center gap-2 rounded-full bg-surface py-1.5 pr-3 pl-1.5 text-sm font-medium shadow-sm"
                   aria-label={`Remover cartão ${c.nome}`}
                 >
+                  <IconeBanco nome={c.nome} tamanho={22} className="rounded-full" />
                   {c.nome}
                   <span aria-hidden className="text-foreground/40">
                     ×
@@ -128,7 +131,7 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
           {salvando
             ? "Salvando…"
             : saldoCentavos > 0
-              ? `Começar com ${formatarMoeda(saldoCentavos)}`
+              ? `Começar com ${formatarBRL(saldoCentavos)}`
               : "Começar"}
         </button>
         <button

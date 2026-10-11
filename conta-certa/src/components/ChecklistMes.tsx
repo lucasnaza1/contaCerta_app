@@ -1,11 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Check, Plus } from "lucide-react";
 import { EditarLancamento } from "@/components/EditarLancamento";
-import { IconeEntrada, IconeForma } from "@/components/icones";
-import { db } from "@/lib/db";
-import { formatarMoeda, nomeMesCurto, somarMes } from "@/lib/mes";
-import type { Cartao, Despesa, Entrada } from "@/lib/types";
+import { IconeBanco } from "@/components/IconeBanco";
+import { IconeForma } from "@/components/IconeForma";
+import { marcarPaga, marcarRecebida } from "@/lib/repositorio";
+import { formatarBRL } from "@/lib/dinheiro";
+import { nomeMesCurto, somarMes } from "@/lib/mes";
+import type { Cartao, Despesa, Entrada } from "@/lib/tipos";
 
 /** Toque curto alterna; toque longo (500ms) abre edição. */
 function useToqueLongo(aoCurto: () => void, aoLongo: () => void) {
@@ -62,6 +66,31 @@ function useToqueLongo(aoCurto: () => void, aoLongo: () => void) {
   };
 }
 
+/** Nome da conta com risco animado da esquerda para a direita ao pagar. */
+function NomeRiscado({ texto, riscado }: { texto: string; riscado: boolean }) {
+  const semMovimento = useReducedMotion();
+  return (
+    <span className="relative inline-block min-w-0">
+      <span
+        className={`block truncate transition-colors duration-300 ${
+          riscado ? "text-neutra" : "text-foreground"
+        }`}
+      >
+        {texto}
+      </span>
+      <motion.span
+        aria-hidden
+        className="absolute top-1/2 left-0 h-[2px] w-full origin-left bg-neutra"
+        initial={false}
+        animate={{ scaleX: riscado ? 1 : 0 }}
+        transition={
+          semMovimento ? { duration: 0 } : { duration: 0.3, ease: "easeOut" }
+        }
+      />
+    </span>
+  );
+}
+
 interface ItemDespesaProps {
   despesa: Despesa;
   cartoes: Cartao[];
@@ -71,6 +100,7 @@ interface ItemDespesaProps {
 
 function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps) {
   const [salvando, setSalvando] = useState(false);
+  const semMovimento = useReducedMotion();
   const toques = useToqueLongo(alternar, () => onEditar(despesa));
 
   const nomeCartao = despesa.cartaoId
@@ -83,14 +113,18 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
     if (salvando) return;
     setSalvando(true);
     try {
-      await db.despesas.update(despesa.id, { paga: !despesa.paga });
+      await marcarPaga(despesa.id, !despesa.paga);
     } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <li className="border-b border-borda last:border-0">
+    <motion.li
+      layout={!semMovimento}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className="border-b border-borda last:border-0"
+    >
       <button
         type="button"
         aria-pressed={despesa.paga}
@@ -107,38 +141,38 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
               : "border-borda bg-surface text-despesa"
           }`}
         >
-          <IconeForma forma={despesa.forma} className="h-5 w-5" />
+          {despesa.paga ? <Check aria-hidden className="h-5 w-5" strokeWidth={2.5} /> : <IconeForma forma={despesa.forma} className="h-5 w-5" />}
         </span>
         <span className="min-w-0 flex-1">
+          <NomeRiscado texto={`${despesa.descricao}${parcela}`} riscado={despesa.paga} />
           <span
-            className={`block truncate text-[15px] font-medium ${
-              despesa.paga ? "text-neutra line-through" : "text-foreground"
-            }`}
-          >
-            {despesa.descricao}
-            {parcela}
-          </span>
-          <span
-            className={`block truncate text-xs ${
+            className={`flex min-w-0 items-center gap-1.5 truncate text-xs ${
               despesa.paga ? "text-neutra" : "text-foreground/50"
             }`}
           >
-            {nomeCartao ?? (despesa.forma === "cartao" ? "Cartão" : undefined)}
+            {nomeCartao ? (
+              <>
+                <IconeBanco nome={nomeCartao} tamanho={14} className="rounded-[4px]" />
+                <span className="truncate">{nomeCartao}</span>
+              </>
+            ) : despesa.forma === "cartao" ? (
+              "Cartão"
+            ) : null}
           </span>
         </span>
         <span
-          className={`shrink-0 text-[15px] font-semibold tabular-nums ${
+          className={`shrink-0 text-[15px] font-semibold tabular-nums transition-colors duration-300 ${
             despesa.paga
-              ? "text-neutra line-through"
+              ? "text-neutra"
               : mesFuturo
                 ? "text-previsao"
                 : "text-despesa"
           }`}
         >
-          {formatarMoeda(despesa.valor)}
+          {formatarBRL(despesa.valor)}
         </span>
       </button>
-    </li>
+    </motion.li>
   );
 }
 
@@ -150,13 +184,14 @@ interface ItemEntradaProps {
 
 function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
   const [salvando, setSalvando] = useState(false);
+  const semMovimento = useReducedMotion();
   const toques = useToqueLongo(alternar, () => onEditar(entrada));
 
   async function alternar() {
     if (salvando) return;
     setSalvando(true);
     try {
-      await db.entradas.update(entrada.id, { recebida: !entrada.recebida });
+      await marcarRecebida(entrada.id, !entrada.recebida);
     } finally {
       setSalvando(false);
     }
@@ -166,7 +201,11 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
     entrada.parcela && entrada.parcelas ? ` ${entrada.parcela}/${entrada.parcelas}` : "";
 
   return (
-    <li className="border-b border-borda last:border-0">
+    <motion.li
+      layout={!semMovimento}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className="border-b border-borda last:border-0"
+    >
       <button
         type="button"
         aria-pressed={entrada.recebida}
@@ -183,17 +222,10 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
               : "border-borda bg-surface text-entrada"
           }`}
         >
-          <IconeEntrada className="h-5 w-5" />
+          {entrada.recebida ? <Check aria-hidden className="h-5 w-5" strokeWidth={2.5} /> : <Plus aria-hidden className="h-5 w-5" strokeWidth={2.5} />}
         </span>
         <span className="min-w-0 flex-1">
-          <span
-            className={`block truncate text-[15px] font-medium ${
-              entrada.recebida ? "text-neutra line-through" : "text-foreground"
-            }`}
-          >
-            {entrada.descricao}
-            {parcela}
-          </span>
+          <NomeRiscado texto={`${entrada.descricao}${parcela}`} riscado={entrada.recebida} />
           <span
             className={`block text-xs ${entrada.recebida ? "text-neutra" : "text-entrada"}`}
           >
@@ -201,18 +233,18 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
           </span>
         </span>
         <span
-          className={`shrink-0 text-[15px] font-semibold tabular-nums ${
+          className={`shrink-0 text-[15px] font-semibold tabular-nums transition-colors duration-300 ${
             entrada.recebida
-              ? "text-neutra line-through"
+              ? "text-neutra"
               : mesFuturo
                 ? "text-previsao"
                 : "text-entrada"
           }`}
         >
-          {formatarMoeda(entrada.valor)}
+          {formatarBRL(entrada.valor)}
         </span>
       </button>
-    </li>
+    </motion.li>
   );
 }
 
@@ -255,30 +287,32 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
           </div>
         ) : (
           <ul className="list-none">
-            {pendentesDespesas.map((d) => (
-              <ItemDespesa
-                key={d.id}
-                despesa={d}
-                cartoes={cartoes}
-                mesFuturo={mesFuturo}
-                onEditar={setDespesaEdicao}
-              />
-            ))}
-            {pendentesEntradas.map((e) => (
-              <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
-            ))}
-            {pagasDespesas.map((d) => (
-              <ItemDespesa
-                key={d.id}
-                despesa={d}
-                cartoes={cartoes}
-                mesFuturo={mesFuturo}
-                onEditar={setDespesaEdicao}
-              />
-            ))}
-            {recebidasEntradas.map((e) => (
-              <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
-            ))}
+            <AnimatePresence initial={false}>
+              {pendentesDespesas.map((d) => (
+                <ItemDespesa
+                  key={d.id}
+                  despesa={d}
+                  cartoes={cartoes}
+                  mesFuturo={mesFuturo}
+                  onEditar={setDespesaEdicao}
+                />
+              ))}
+              {pendentesEntradas.map((e) => (
+                <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
+              ))}
+              {pagasDespesas.map((d) => (
+                <ItemDespesa
+                  key={d.id}
+                  despesa={d}
+                  cartoes={cartoes}
+                  mesFuturo={mesFuturo}
+                  onEditar={setDespesaEdicao}
+                />
+              ))}
+              {recebidasEntradas.map((e) => (
+                <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
+              ))}
+            </AnimatePresence>
           </ul>
         )}
         <p className="sr-only">

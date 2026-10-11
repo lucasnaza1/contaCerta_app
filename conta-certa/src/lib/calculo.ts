@@ -47,9 +47,14 @@ function totalizar(despesas: Despesa[], entradas: Entrada[]): Map<string, Totais
 
 /**
  * Resumo de um mês, seguindo as regras do MVP:
- * - saldo real = saldo inicial + entradas recebidas − despesas pagas (todas);
- * - início do mês = previsão do mês anterior (o primeiro usa o saldo inicial);
+ * - saldo real = saldo inicial + entradas recebidas − despesas pagas,
+ *   contando só do início de uso em diante (o saldo inicial informado
+ *   já contém tudo que aconteceu antes);
+ * - início do mês = previsão do mês anterior; o primeiro mês de uso
+ *   começa com o saldo inicial informado;
  * - previsão = início do mês + entradas − despesas do mês (todas).
+ * Lançamentos em meses anteriores ao início de uso são históricos:
+ * não afetam saldo nem previsão.
  */
 export function resumirMes(
   config: Config,
@@ -58,31 +63,31 @@ export function resumirMes(
   mes: string,
   mesRef: string
 ): ResumoMes {
-  const totais = totalizar(despesas, entradas);
+  // Totais do mês exibido (mesmo antes do início de uso, para bater com o checklist).
+  const totaisTudo = totalizar(despesas, entradas);
 
-  // Saldo real: tudo que entrou e saiu de fato, em qualquer mês.
+  // Da cadeia de saldo/previsão só entra o que é do início de uso em diante.
+  const totais = totalizar(
+    despesas.filter((d) => compararMeses(d.mes, config.mesInicial) >= 0),
+    entradas.filter((e) => compararMeses(e.mes, config.mesInicial) >= 0)
+  );
+
+  // Saldo real: tudo que entrou e saiu de fato desde o início de uso.
   let saldoReal = config.saldoInicial;
   for (const t of totais.values()) {
     saldoReal += t.entradasRecebidas - t.despesasPagas;
   }
 
-  // Caminha do primeiro mês com dado (ou mesInicial) até o mês pedido.
-  const mesesComDados = [...totais.keys()].sort(compararMeses);
-  const primeiro = mesesComDados.length
-    ? compararMeses(mesesComDados[0], config.mesInicial) < 0
-      ? mesesComDados[0]
-      : config.mesInicial
-    : config.mesInicial;
-
-  let inicio = primeiro === config.mesInicial ? config.saldoInicial : 0;
-  let cursor = primeiro;
+  // Cadeia de previsões: sempre parte do início de uso com o saldo inicial.
+  let inicio = config.saldoInicial;
+  let cursor = config.mesInicial;
   while (compararMeses(cursor, mes) < 0) {
     const t = totais.get(cursor);
     inicio += (t?.entradas ?? 0) - (t?.despesas ?? 0);
     cursor = somarMes(cursor, 1);
   }
 
-  const t = totais.get(mes);
+  const t = totaisTudo.get(mes);
   return {
     mes,
     saldo: mes === mesRef ? saldoReal : inicio,
@@ -93,20 +98,22 @@ export function resumirMes(
   };
 }
 
-/** Lista de meses (do primeiro com dados até o último) com entradas, despesas e previsão. */
+/** Lista de meses (do início de uso até o último com dados). */
 export function consolidar(
   config: Config,
   despesas: Despesa[],
   entradas: Entrada[]
 ): ResumoMes[] {
-  const totais = totalizar(despesas, entradas);
+  const totais = totalizar(
+    despesas.filter((d) => compararMeses(d.mes, config.mesInicial) >= 0),
+    entradas.filter((e) => compararMeses(e.mes, config.mesInicial) >= 0)
+  );
   const meses = [...totais.keys()].sort(compararMeses);
   if (!meses.length) return [];
 
-  const primeiro = compararMeses(meses[0], config.mesInicial) < 0 ? meses[0] : config.mesInicial;
   const lista: ResumoMes[] = [];
-  let inicio = primeiro === config.mesInicial ? config.saldoInicial : 0;
-  let cursor = primeiro;
+  let inicio = config.saldoInicial;
+  let cursor = config.mesInicial;
   const ultimo = meses[meses.length - 1];
   while (compararMeses(cursor, ultimo) <= 0) {
     const t = totais.get(cursor);

@@ -27,6 +27,10 @@ export class ContaCertaDB extends Dexie {
       planos: "id",
       fixasExternas: "id",
     });
+    // v2: índice para buscar/excluir grupos de parcelas de entrada.
+    this.version(2).stores({
+      entradas: "id, mes, recebida, grupoId",
+    });
   }
 }
 

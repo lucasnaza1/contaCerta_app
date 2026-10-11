@@ -14,25 +14,22 @@ function Celula({
 }: {
   rotulo: string;
   valor: number;
-  cor: "inicio" | "entrada" | "despesa" | "atual";
+  cor: "entrada" | "despesa" | "saldo";
 }) {
-  const classes = {
-    inicio: "text-foreground",
-    entrada: "text-entrada",
-    despesa: "text-despesa",
-    atual: (valor: number) => (valor < 0 ? "text-despesa" : "text-previsao"),
-  } as const;
-
+  const classe =
+    cor === "saldo"
+      ? valor < 0
+        ? "text-despesa"
+        : "text-previsao"
+      : cor === "entrada"
+        ? "text-entrada"
+        : "text-despesa";
   return (
     <div className="flex min-w-0 flex-col gap-1 p-3">
       <span className="text-rotulo font-medium uppercase tracking-wide text-foreground/50">
         {rotulo}
       </span>
-      <span
-        className={`truncate text-base font-semibold tabular-nums ${
-          cor === "atual" ? classes.atual(valor) : classes[cor]
-        }`}
-      >
+      <span className={`truncate text-base font-semibold tabular-nums ${classe}`}>
         {formatarBRL(valor)}
       </span>
     </div>
@@ -40,28 +37,38 @@ function Celula({
 }
 
 /**
- * Header do mês: Saldo no início + Entradas − Despesas = Saldo atual.
- * 2×2 no celular, uma linha a partir de sm.
+ * Header do mês: Entradas − Despesas = Saldo do mês, e abaixo o acumulado
+ * (soma dos saldos do início de uso até este mês).
  */
 export function ResumoMesHeader({ resumo }: ResumoMesHeaderProps) {
-  const saldoAtual = resumo.saldoInicio + resumo.entradas - resumo.despesas;
   return (
-    <section
-      aria-label="Resumo do mês"
-      className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-borda sm:grid-cols-4"
-    >
-      <div className="bg-surface">
-        <Celula rotulo="Início do mês" valor={resumo.saldoInicio} cor="inicio" />
+    <section aria-label="Resumo do mês" className="flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-2xl bg-borda">
+        <div className="bg-surface">
+          <Celula rotulo="Entradas" valor={resumo.entradas} cor="entrada" />
+        </div>
+        <div className="bg-surface">
+          <Celula rotulo="Despesas" valor={resumo.despesas} cor="despesa" />
+        </div>
+        <div className="bg-surface">
+          <Celula rotulo="Saldo do mês" valor={resumo.saldo} cor="saldo" />
+        </div>
       </div>
-      <div className="bg-surface">
-        <Celula rotulo="Entradas" valor={resumo.entradas} cor="entrada" />
-      </div>
-      <div className="bg-surface">
-        <Celula rotulo="Despesas" valor={resumo.despesas} cor="despesa" />
-      </div>
-      <div className="bg-surface">
-        <Celula rotulo="Saldo atual" valor={saldoAtual} cor="atual" />
-      </div>
+      <p className="flex items-baseline justify-between gap-2 rounded-2xl bg-surface px-4 py-2 text-sm shadow-sm">
+        <span className="text-foreground/60">
+          Acumulado até aqui
+          <span className="block text-xs text-foreground/45">
+            Saldo deste mês + meses anteriores
+          </span>
+        </span>
+        <span
+          className={`shrink-0 text-base font-bold tabular-nums ${
+            resumo.acumulado < 0 ? "text-despesa" : "text-previsao"
+          }`}
+        >
+          {formatarBRL(resumo.acumulado)}
+        </span>
+      </p>
     </section>
   );
 }

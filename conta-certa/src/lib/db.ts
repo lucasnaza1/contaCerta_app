@@ -56,8 +56,6 @@ export async function salvarConfig(config: Omit<Config, "id">): Promise<void> {
   await db.config.put({ ...config, id: "config" });
 }
 
-// ---------- Backup (dexie-export-import) ----------
-
 /**
  * Exporta o banco inteiro (formato dexie-export-import) como Blob JSON.
  * A gravação da data do último backup fica a cargo do chamador
@@ -130,7 +128,7 @@ export async function exportarBackupLegado(): Promise<Backup> {
   return {
     versao: 1,
     exportadoEm: new Date().toISOString(),
-    config: config ?? { id: "config", saldoInicial: 0, mesInicial: "" },
+    config: config ?? { id: "config", mesInicial: "" },
     cartoes: await db.cartoes.toArray(),
     despesas: await db.despesas.toArray(),
     entradas: await db.entradas.toArray(),

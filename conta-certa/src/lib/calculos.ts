@@ -1,22 +1,18 @@
-import { compararMeses, somarMes } from "./mes";
-import type { Config, Despesa, Entrada, FixaExterna, Plano } from "./tipos";
+import type { Cartao, Config, Despesa, Entrada, FixaExterna, Plano } from "./tipos";
 
-// Funções puras de cálculo (sem Dexie). Regras do conta-certa-mvp-v2.md:
-// - meses anteriores ao início de uso são históricos (não contam);
-// - início do mês = previsão do mês anterior; o primeiro usa o saldo inicial.
+// Funções puras de cálculo (sem Dexie). Mês a mês: cada mês é fechado
+// nele mesmo (entradas − despesas), sem saldo carregado entre meses.
 
 export interface ResumoMes {
   mes: string;
-  /** Saldo no início do mês. */
-  saldoInicio: number;
   /** Total de entradas do mês (recebidas ou não). */
   entradas: number;
   /** Total de despesas do mês (pagas ou não). */
   despesas: number;
-  /** Início + entradas − despesas (todas). */
-  previsao: number;
-  /** Mês anterior ao início de uso: lançamentos são históricos. */
-  historico: boolean;
+  /** Entradas − despesas do mês. */
+  saldo: number;
+  /** Soma dos saldos do início de uso até este mês: o que sobrou no total. */
+  acumulado: number;
 }
 
 interface TotaisMes {
@@ -43,84 +39,86 @@ function totalizar(despesas: Despesa[], entradas: Entrada[]): Map<string, Totais
   return mapa;
 }
 
-/** Resumo de um mês conforme as regras do MVP. */
+function fechar(t: TotaisMes | undefined, mes: string): Omit<ResumoMes, "acumulado"> {
+  const entradas = t?.entradas ?? 0;
+  const despesas = t?.despesas ?? 0;
+  return { mes, entradas, despesas, saldo: entradas - despesas };
+}
+
+/** Resumo de um mês: entradas, despesas, saldo e o acumulado até ele. */
 export function resumirMes(
   config: Config,
   despesas: Despesa[],
   entradas: Entrada[],
   mes: string
 ): ResumoMes {
-  const totaisTudo = totalizar(despesas, entradas);
-
-  const historico = compararMeses(mes, config.mesInicial) < 0;
-  if (historico) {
-    const t = totaisTudo.get(mes);
-    return {
-      mes,
-      saldoInicio: 0,
-      entradas: t?.entradas ?? 0,
-      despesas: t?.despesas ?? 0,
-      previsao: (t?.entradas ?? 0) - (t?.despesas ?? 0),
-      historico: true,
-    };
-  }
-
-  // Da cadeia de saldo/previsão só entra o que é do início de uso em diante.
   const totais = totalizar(
-    despesas.filter((d) => compararMeses(d.mes, config.mesInicial) >= 0),
-    entradas.filter((e) => compararMeses(e.mes, config.mesInicial) >= 0)
+    despesas.filter((d) => d.mes >= config.mesInicial && d.mes <= mes),
+    entradas.filter((e) => e.mes >= config.mesInicial && e.mes <= mes)
   );
-
-  let inicio = config.saldoInicial;
-  let cursor = config.mesInicial;
-  while (compararMeses(cursor, mes) < 0) {
-    const t = totais.get(cursor);
-    inicio += (t?.entradas ?? 0) - (t?.despesas ?? 0);
-    cursor = somarMes(cursor, 1);
+  // Saldo do mês + soma dos meses anteriores (do início de uso até aqui).
+  let acumulado = 0;
+  for (const [m, t] of totais) {
+    if (m <= mes) acumulado += t.entradas - t.despesas;
   }
-
   const t = totais.get(mes);
-  return {
-    mes,
-    saldoInicio: inicio,
-    entradas: t?.entradas ?? 0,
-    despesas: t?.despesas ?? 0,
-    previsao: inicio + (t?.entradas ?? 0) - (t?.despesas ?? 0),
-    historico: false,
-  };
+  const resumo = fechar(t, mes);
+  return { ...resumo, acumulado };
 }
 
-/** Lista de meses (do início de uso até o último com dados). */
+/** Lista de meses (do início de uso até o último com dados), com acumulado. */
 export function consolidar(
   config: Config,
   despesas: Despesa[],
   entradas: Entrada[]
 ): ResumoMes[] {
   const totais = totalizar(
-    despesas.filter((d) => compararMeses(d.mes, config.mesInicial) >= 0),
-    entradas.filter((e) => compararMeses(e.mes, config.mesInicial) >= 0)
+    despesas.filter((d) => d.mes >= config.mesInicial),
+    entradas.filter((e) => e.mes >= config.mesInicial)
   );
-  const meses = [...totais.keys()].sort(compararMeses);
+  const meses = [...totais.keys()].sort();
   if (!meses.length) return [];
-
   const lista: ResumoMes[] = [];
-  let inicio = config.saldoInicial;
-  let cursor = config.mesInicial;
-  const ultimo = meses[meses.length - 1];
-  while (compararMeses(cursor, ultimo) <= 0) {
-    const t = totais.get(cursor);
-    lista.push({
-      mes: cursor,
-      saldoInicio: inicio,
-      entradas: t?.entradas ?? 0,
-      despesas: t?.despesas ?? 0,
-      previsao: inicio + (t?.entradas ?? 0) - (t?.despesas ?? 0),
-      historico: false,
-    });
-    inicio += (t?.entradas ?? 0) - (t?.despesas ?? 0);
-    cursor = somarMes(cursor, 1);
+  let acumulado = 0;
+  for (const mes of meses) {
+    const resumo = fechar(totais.get(mes), mes);
+    acumulado += resumo.saldo;
+    lista.push({ ...resumo, acumulado });
   }
   return lista;
+}
+
+// ---------- Faturas ----------
+
+export interface Fatura {
+  /** id do cartão ("" quando é despesa de cartão sem cartão definido). */
+  cartaoId: string;
+  /** Nome do cartão (ou "Cartão" quando não identificado). */
+  nome: string;
+  /** Total da fatura em centavos. */
+  total: number;
+  despesas: Despesa[];
+}
+
+/**
+ * Agrupa as despesas de cartão por fatura (cartão), com total. Despesas de
+ * outras formas não entram. `cartoes` fornece os nomes.
+ */
+export function agruparFaturas(despesas: Despesa[], cartoes: Cartao[]): Fatura[] {
+  const nomePorId = new Map(cartoes.map((c) => [c.id, c.nome]));
+  const faturas = new Map<string, Fatura>();
+  for (const d of despesas) {
+    if (d.forma !== "cartao") continue;
+    const id = d.cartaoId ?? "";
+    let f = faturas.get(id);
+    if (!f) {
+      f = { cartaoId: id, nome: nomePorId.get(id) ?? "Cartão", total: 0, despesas: [] };
+      faturas.set(id, f);
+    }
+    f.total += d.valor;
+    f.despesas.push(d);
+  }
+  return [...faturas.values()].sort((a, b) => b.total - a.total);
 }
 
 // ---------- Simular ----------

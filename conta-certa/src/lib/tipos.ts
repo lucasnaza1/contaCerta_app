@@ -31,7 +31,6 @@ export interface Entrada {
 
 export interface Config {
   id: "config";
-  saldoInicial: number; // centavos
   mesInicial: string;
 }
 

@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { EditarLancamento } from "@/components/EditarLancamento";
 import { IconeBanco } from "@/components/IconeBanco";
 import { IconeForma } from "@/components/IconeForma";
+import { agruparFaturas, type Fatura } from "@/lib/calculos";
 import { marcarPaga, marcarRecebida } from "@/lib/repositorio";
 import { formatarBRL } from "@/lib/dinheiro";
 import { nomeMesCurto, somarMes } from "@/lib/mes";
@@ -248,6 +249,81 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
   );
 }
 
+interface CartaoFaturaProps {
+  fatura: Fatura;
+  mesFuturo: boolean;
+  onEditar: (d: Despesa) => void;
+}
+
+/** Fatura de um cartão: consolidado com setinha para expandir os itens. */
+function CartaoFatura({ fatura, mesFuturo, onEditar }: CartaoFaturaProps) {
+  const [aberta, setAberta] = useState(false);
+  const semMovimento = useReducedMotion();
+  const pendentes = fatura.despesas.filter((d) => !d.paga).length;
+  const tudoPago = pendentes === 0;
+
+  return (
+    <li className="rounded-2xl bg-surface shadow-sm">
+      <button
+        type="button"
+        onClick={() => setAberta(!aberta)}
+        aria-expanded={aberta}
+        aria-controls={`fatura-${fatura.cartaoId || "sem-cartao"}`}
+        className="botao-min flex w-full min-w-0 items-center gap-3 p-4 text-left"
+      >
+        <IconeBanco nome={fatura.nome} tamanho={36} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-semibold">{fatura.nome}</span>
+          <span className="block text-xs text-foreground/50">
+            {fatura.despesas.length} compra{fatura.despesas.length > 1 ? "s" : ""} ·{" "}
+            {tudoPago ? "tudo pago" : `${pendentes} a pagar`}
+          </span>
+        </span>
+        <span
+          className={`shrink-0 text-[15px] font-semibold tabular-nums ${
+            tudoPago ? "text-neutra" : mesFuturo ? "text-previsao" : "text-despesa"
+          }`}
+        >
+          {formatarBRL(fatura.total)}
+        </span>
+        <motion.span
+          aria-hidden
+          animate={{ rotate: aberta ? 180 : 0 }}
+          transition={semMovimento ? { duration: 0 } : { duration: 0.2 }}
+          className="shrink-0 text-foreground/40"
+        >
+          <ChevronDown className="h-5 w-5" />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {aberta && (
+          <motion.div
+            id={`fatura-${fatura.cartaoId || "sem-cartao"}`}
+            key="conteudo"
+            initial={semMovimento ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={semMovimento ? undefined : { height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <ul className="list-none px-4 pb-2">
+              {fatura.despesas.map((d) => (
+                <ItemDespesa
+                  key={d.id}
+                  despesa={d}
+                  cartoes={[]}
+                  mesFuturo={mesFuturo}
+                  onEditar={onEditar}
+                />
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </li>
+  );
+}
+
 interface ChecklistMesProps {
   mes: string;
   mesRef: string;
@@ -259,19 +335,48 @@ interface ChecklistMesProps {
 export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: ChecklistMesProps) {
   const [despesaEdicao, setDespesaEdicao] = useState<Despesa | null>(null);
   const [entradaEdicao, setEntradaEdicao] = useState<Entrada | null>(null);
+  // "" = todos; id do cartão filtra; "outros" = pix/boleto.
+  const [filtro, setFiltro] = useState("");
 
   const mesFuturo = mes > mesRef;
   const doMesDespesas = despesas.filter((d) => d.mes === mes);
   const doMesEntradas = entradas.filter((e) => e.mes === mes);
-  const pendentesDespesas = doMesDespesas.filter((d) => !d.paga);
-  const pagasDespesas = doMesDespesas.filter((d) => d.paga);
-  const pendentesEntradas = doMesEntradas.filter((e) => !e.recebida);
-  const recebidasEntradas = doMesEntradas.filter((e) => e.recebida);
+
+  const faturas = agruparFaturas(doMesDespesas, cartoes);
+  const faturasVisiveis = filtro ? faturas.filter((f) => f.cartaoId === filtro) : faturas;
+  // Despesas avulsas: fora de cartão (pix/boleto) ou de cartão sem cartão definido.
+  const idsFiltrados = new Set(faturasVisiveis.flatMap((f) => f.despesas.map((d) => d.id)));
+  const avulsasVisiveis = doMesDespesas.filter(
+    (d) => d.forma !== "cartao" && (!filtro || filtro === "outros") && !idsFiltrados.has(d.id)
+  );
+  const entradasVisiveis = !filtro || filtro === "outros" ? doMesEntradas : [];
 
   const vazio = doMesDespesas.length + doMesEntradas.length === 0;
 
   return (
     <>
+      {/* Filtro por banco/cartão */}
+      {faturas.length > 0 && (
+        <div
+          role="group"
+          aria-label="Filtrar por banco"
+          className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <FiltroChip ativo={filtro === ""} onClick={() => setFiltro("")}>
+            Todos
+          </FiltroChip>
+          {faturas.map((f) => (
+            <FiltroChip key={f.cartaoId || "sem-cartao"} ativo={filtro === f.cartaoId} onClick={() => setFiltro(f.cartaoId)}>
+              <IconeBanco nome={f.nome} tamanho={18} className="rounded-[4px]" />
+              {f.nome}
+            </FiltroChip>
+          ))}
+          <FiltroChip ativo={filtro === "outros"} onClick={() => setFiltro("outros")}>
+            Sem cartão
+          </FiltroChip>
+        </div>
+      )}
+
       <section
         aria-label="Contas do mês"
         className="rounded-2xl bg-surface px-4 py-2 shadow-sm"
@@ -286,34 +391,41 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
             </p>
           </div>
         ) : (
-          <ul className="list-none">
-            <AnimatePresence initial={false}>
-              {pendentesDespesas.map((d) => (
-                <ItemDespesa
-                  key={d.id}
-                  despesa={d}
-                  cartoes={cartoes}
-                  mesFuturo={mesFuturo}
-                  onEditar={setDespesaEdicao}
-                />
-              ))}
-              {pendentesEntradas.map((e) => (
-                <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
-              ))}
-              {pagasDespesas.map((d) => (
-                <ItemDespesa
-                  key={d.id}
-                  despesa={d}
-                  cartoes={cartoes}
-                  mesFuturo={mesFuturo}
-                  onEditar={setDespesaEdicao}
-                />
-              ))}
-              {recebidasEntradas.map((e) => (
-                <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
-              ))}
-            </AnimatePresence>
-          </ul>
+          <>
+            {/* Consolidado de faturas por cartão (expansível) */}
+            {faturasVisiveis.length > 0 && (
+              <ul className="flex list-none flex-col gap-2 py-2">
+                {faturasVisiveis.map((f) => (
+                  <CartaoFatura
+                    key={f.cartaoId || "sem-cartao"}
+                    fatura={f}
+                    mesFuturo={mesFuturo}
+                    onEditar={setDespesaEdicao}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {/* Avulsas (pix/boleto) + entradas */}
+            {(avulsasVisiveis.length > 0 || entradasVisiveis.length > 0) && (
+              <ul className="list-none">
+                <AnimatePresence initial={false}>
+                  {avulsasVisiveis.map((d) => (
+                    <ItemDespesa
+                      key={d.id}
+                      despesa={d}
+                      cartoes={cartoes}
+                      mesFuturo={mesFuturo}
+                      onEditar={setDespesaEdicao}
+                    />
+                  ))}
+                  {entradasVisiveis.map((e) => (
+                    <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+          </>
         )}
         <p className="sr-only">
           Mês de referência para previsões: {mesRef}. Próximo mês: {somarMes(mes, 1)}.
@@ -330,5 +442,30 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
         }}
       />
     </>
+  );
+}
+
+function FiltroChip({
+  ativo,
+  onClick,
+  children,
+}: {
+  ativo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={ativo}
+      className={`botao-min flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+        ativo
+          ? "border-previsao bg-previsao text-white"
+          : "border-borda bg-surface text-foreground/60 hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

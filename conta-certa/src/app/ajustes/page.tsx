@@ -3,10 +3,8 @@
 import { useRef, useState } from "react";
 import { Download, Pencil, Trash2, Upload } from "lucide-react";
 import { Abas } from "@/components/Abas";
-import { CampoValor } from "@/components/CampoValor";
 import { IconeBanco } from "@/components/IconeBanco";
-import { exportarBackup, lerBackup, salvarConfig, type ResumoBackup } from "@/lib/db";
-import { formatarBRL } from "@/lib/dinheiro";
+import { exportarBackup, lerBackup, type ResumoBackup } from "@/lib/db";
 import {
   adicionarCartao,
   removerCartao,
@@ -23,8 +21,6 @@ export default function PaginaAjustes() {
   const { carregando, config, cartoes, despesas } = useDados();
   const { escuro, alternar } = useModoEscuro();
   const { ultimo } = useUltimoBackup();
-  // null = ainda não editado: mostra o saldo salvo como ponto de partida.
-  const [saldoEdicao, setSaldoEdicao] = useState<number | null>(null);
   const [nomeCartao, setNomeCartao] = useState("");
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
@@ -56,19 +52,6 @@ export default function PaginaAjustes() {
         <Abas />
       </div>
     );
-  }
-
-  const configAtual = config;
-  const saldoCampo = saldoEdicao ?? configAtual.saldoInicial;
-
-  async function salvarSaldo() {
-    if (saldoCampo < 0) {
-      setErro("Digite um saldo válido.");
-      return;
-    }
-    await salvarConfig({ saldoInicial: saldoCampo, mesInicial: configAtual.mesInicial });
-    setErro("");
-    setAviso("Saldo inicial salvo.");
   }
 
   async function aoAdicionarCartao() {
@@ -169,37 +152,6 @@ export default function PaginaAjustes() {
                 />
               </span>
             </label>
-          </section>
-
-          {/* Saldo inicial */}
-          <section aria-labelledby="titulo-saldo" className="flex flex-col gap-2">
-            <h2 id="titulo-saldo" className="text-[15px] font-bold">
-              Saldo inicial
-            </h2>
-            <div className="flex flex-wrap items-end gap-2">
-              <CampoValor
-                id="saldo-inicial"
-                label="Quanto você tinha"
-                centavos={saldoCampo}
-                onCentavos={(c) => {
-                  setSaldoEdicao(c);
-                  setErro("");
-                  setAviso("");
-                }}
-                className="min-w-0 flex-1 basis-44"
-              />
-              <button
-                type="button"
-                onClick={salvarSaldo}
-                className="botao-min shrink-0 rounded-xl bg-previsao px-4 py-2.5 text-sm font-semibold text-white"
-              >
-                Salvar
-              </button>
-            </div>
-            <p className="text-xs text-foreground/50">
-              Quanto você tinha quando começou a usar o app
-              {configAtual.saldoInicial > 0 ? ` (hoje: ${formatarBRL(configAtual.saldoInicial)})` : ""}.
-            </p>
           </section>
 
           {/* Cartões */}

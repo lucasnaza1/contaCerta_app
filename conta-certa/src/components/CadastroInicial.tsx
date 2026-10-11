@@ -1,23 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { CampoValor } from "@/components/CampoValor";
 import { IconeBanco } from "@/components/IconeBanco";
 import { db, salvarConfig } from "@/lib/db";
-import { formatarBRL } from "@/lib/dinheiro";
 import { mesAtual } from "@/lib/mes";
 import type { Cartao } from "@/lib/tipos";
 
 interface CadastroInicialProps {
-  onPronto: (saldo: number) => void;
+  onPronto: () => void;
 }
 
-/** Cadastro rápido: quanto você tem hoje + cartões (opcional). */
+/** Cadastro rápido: cartões que usa (opcional). */
 export function CadastroInicial({ onPronto }: CadastroInicialProps) {
-  const [saldoCentavos, setSaldoCentavos] = useState(0);
   const [nomeCartao, setNomeCartao] = useState("");
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
-  const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   async function adicionarCartao() {
@@ -31,16 +27,13 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
   }
 
   async function finalizar(pularCartoes: boolean) {
-    if (saldoCentavos <= 0) {
-      setErro("Digite quanto você tem hoje (ex.: 1500,00).");
-      return;
-    }
+    if (salvando) return;
     setSalvando(true);
     try {
       const lista = pularCartoes ? [] : cartoes;
-      await salvarConfig({ saldoInicial: saldoCentavos, mesInicial: mesAtual() });
+      await salvarConfig({ mesInicial: mesAtual() });
       if (lista.length) await db.cartoes.bulkPut(lista);
-      onPronto(saldoCentavos);
+      onPronto();
     } finally {
       setSalvando(false);
     }
@@ -51,25 +44,9 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold text-foreground">Conta Certa</h1>
         <p className="text-sm text-foreground/60">
-          Dois passos rápidos e você já pode usar o app.
+          Um passo rápido e você já pode usar o app.
         </p>
       </div>
-
-      <CampoValor
-        id="saldo"
-        label="Quanto você tem hoje?"
-        centavos={saldoCentavos}
-        onCentavos={(c) => {
-          setSaldoCentavos(c);
-          setErro("");
-        }}
-        disabled={salvando}
-        erro={!!erro && saldoCentavos <= 0 ? erro : undefined}
-        autoFocus
-      />
-      <p id="saldo-erro" aria-live="polite" className="min-h-5 text-sm text-despesa">
-        {erro}
-      </p>
 
       <div className="flex flex-col gap-2">
         <label htmlFor="cartao" className="text-sm font-medium text-foreground">
@@ -128,11 +105,7 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
           onClick={() => finalizar(false)}
           className="botao-min rounded-xl bg-previsao px-4 py-3 text-base font-semibold text-white hover:opacity-90 disabled:opacity-60"
         >
-          {salvando
-            ? "Salvando…"
-            : saldoCentavos > 0
-              ? `Começar com ${formatarBRL(saldoCentavos)}`
-              : "Começar"}
+          {salvando ? "Salvando…" : "Começar"}
         </button>
         <button
           type="button"
@@ -146,3 +119,4 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
     </div>
   );
 }
+

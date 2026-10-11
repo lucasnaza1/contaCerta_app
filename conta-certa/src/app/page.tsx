@@ -43,10 +43,8 @@ export default function PaginaMes() {
   }
 
   const resumo = resumirMes(config, despesas, entradas, mes);
-  // Proporção gasta da previsão do mês, para o nível da água.
-  const base = resumo.saldoInicio + resumo.entradas;
-  const proporcaoGasta = base > 0 ? resumo.despesas / base : 1;
-  const disponivel = resumo.previsao;
+  // Proporção gasta das entradas do mês, para o nível da água.
+  const proporcaoGasta = resumo.entradas > 0 ? resumo.despesas / resumo.entradas : 1;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -73,15 +71,7 @@ export default function PaginaMes() {
 
         <div className="flex flex-col gap-4">
           <ResumoMesHeader resumo={resumo} />
-          {!resumo.historico && (
-            <AguaNivel proporcao={proporcaoGasta} valor={disponivel} />
-          )}
-          {resumo.historico && (
-            <p className="rounded-xl bg-surface px-4 py-2 text-xs text-foreground/60 shadow-sm">
-              Mês anterior ao início de uso ({nomeMesAno(config.mesInicial)}). Os lançamentos
-              ficam registrados como histórico e não contam no saldo.
-            </p>
-          )}
+          <AguaNivel proporcao={proporcaoGasta} valor={resumo.saldo} />
           {diasSemBackup >= 30 && (
             <p className="rounded-xl bg-surface px-4 py-2 text-xs text-foreground/60 shadow-sm">
               Faz {diasSemBackup === Infinity ? "tempo" : `${diasSemBackup} dias`} que você não

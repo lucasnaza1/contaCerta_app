@@ -61,6 +61,11 @@ export function diferencaMeses(a: string, b: string): number {
   return (anoB - anoA) * 12 + (mesB - mesA);
 }
 
+/** Dia do mês válido (1–31) para fechamento/vencimento. */
+export function diaValido(dia: number): boolean {
+  return Number.isInteger(dia) && dia >= 1 && dia <= 31;
+}
+
 /** 123456 (centavos) -> "R$ 1.234,56" */
 export function formatarMoeda(centavos: number): string {
   return new Intl.NumberFormat("pt-BR", {

@@ -3,6 +3,10 @@ export type Forma = "pix" | "boleto" | "cartao";
 export interface Cartao {
   id: string;
   nome: string;
+  /** Dia do mês em que a fatura fecha (1–31). */
+  diaFechamento?: number;
+  /** Dia do mês em que a fatura vence (1–31). */
+  diaVencimento?: number;
 }
 
 export interface Despesa {
@@ -16,6 +20,8 @@ export interface Despesa {
   parcela?: number; // 1..parcelas
   parcelas?: number;
   paga: boolean;
+  /** Dia do vencimento do pagamento (1–31), opcional. */
+  vencimento?: number;
 }
 
 export interface Entrada {

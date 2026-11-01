@@ -1,4 +1,5 @@
-import type { Cartao, Config, Despesa, Entrada, FixaExterna, Plano } from "./tipos";
+import { dividirParcelas, somarMes } from "./mes";
+import type { Cartao, Config, Despesa, Entrada, FixaExterna } from "./tipos";
 
 // Funções puras de cálculo (sem Dexie). Mês a mês: cada mês é fechado
 // nele mesmo (entradas − despesas), sem saldo carregado entre meses.
@@ -98,21 +99,34 @@ export interface Fatura {
   /** Total da fatura em centavos. */
   total: number;
   despesas: Despesa[];
+  /** Dia do mês em que a fatura fecha (1–31), se cadastrado. */
+  diaFechamento?: number;
+  /** Dia do mês em que a fatura vence (1–31), se cadastrado. */
+  diaVencimento?: number;
 }
 
 /**
  * Agrupa as despesas de cartão por fatura (cartão), com total. Despesas de
- * outras formas não entram. `cartoes` fornece os nomes.
+ * outras formas não entram. `cartoes` fornece os nomes e dias da fatura.
  */
 export function agruparFaturas(despesas: Despesa[], cartoes: Cartao[]): Fatura[] {
   const nomePorId = new Map(cartoes.map((c) => [c.id, c.nome]));
+  const diasPorId = new Map(cartoes.map((c) => [c.id, c]));
   const faturas = new Map<string, Fatura>();
   for (const d of despesas) {
     if (d.forma !== "cartao") continue;
     const id = d.cartaoId ?? "";
     let f = faturas.get(id);
     if (!f) {
-      f = { cartaoId: id, nome: nomePorId.get(id) ?? "Cartão", total: 0, despesas: [] };
+      const cartao = diasPorId.get(id);
+      f = {
+        cartaoId: id,
+        nome: nomePorId.get(id) ?? "Cartão",
+        total: 0,
+        despesas: [],
+        ...(cartao?.diaFechamento !== undefined ? { diaFechamento: cartao.diaFechamento } : {}),
+        ...(cartao?.diaVencimento !== undefined ? { diaVencimento: cartao.diaVencimento } : {}),
+      };
       faturas.set(id, f);
     }
     f.total += d.valor;
@@ -123,12 +137,57 @@ export function agruparFaturas(despesas: Despesa[], cartoes: Cartao[]): Fatura[]
 
 // ---------- Simular ----------
 
-export interface ResultadoPlano {
-  guardarPorMes: number;
-  cabeNaSobra: boolean;
-  faltaPorMes: number;
-  /** Em quantos meses dá com a sobra atual (só faz sentido se não cabe e sobra > 0). */
-  mesesNecessarios: number | null;
+/** Uma linha da simulação de economia, mês a mês. */
+export interface MesSimulacao {
+  /** "2026-11" */
+  mes: string;
+  /** Valor depositado neste mês (centavos). */
+  deposito: number;
+  /** Rendimento deste mês (centavos). */
+  rendimento: number;
+  /** Total guardado ao fim do mês (centavos). */
+  acumulado: number;
+}
+
+export interface Simulacao {
+  /** Meses da simulação, em ordem. */
+  meses: MesSimulacao[];
+  /** Depósito mensal calculado (centavos). */
+  depositoMensal: number;
+  /** Último mês da simulação ("2026-11"). */
+  mesFinal: string;
+  /** Total guardado ao fim (centavos). */
+  total: number;
+}
+
+/**
+ * Simula uma economia mês a mês: partindo de `mesInicial`, deposita o valor
+ * necessário para atingir `valorAlvo` em `nMeses` (depósitos somam o alvo,
+ * diferença de centavos na última parcela), com rendimento mensal opcional
+ * sobre o acumulado.
+ */
+export function simularEconomia(
+  valorAlvo: number,
+  nMeses: number,
+  mesInicial: string,
+  rendimentoMensal = 0
+): Simulacao {
+  const meses: MesSimulacao[] = [];
+  const depositos = dividirParcelas(valorAlvo, Math.max(1, nMeses));
+  const depositoMensal = depositos[0] ?? 0;
+  let acumulado = 0;
+  for (let i = 0; i < nMeses; i++) {
+    const deposito = depositos[i];
+    const rendimento = Math.round(acumulado * rendimentoMensal);
+    acumulado += deposito + rendimento;
+    meses.push({ mes: somarMes(mesInicial, i), deposito, rendimento, acumulado });
+  }
+  return {
+    meses,
+    depositoMensal,
+    mesFinal: nMeses > 0 ? somarMes(mesInicial, nMeses - 1) : mesInicial,
+    total: acumulado,
+  };
 }
 
 /** renda − despesas do app − fixas de fora = quanto dá para guardar por mês. */
@@ -139,30 +198,4 @@ export function calcularSobra(
 ): number {
   const fixas = fixasExternas.reduce((s, f) => s + f.valor, 0);
   return rendaMes - despesasMes - fixas;
-}
-
-/** Projeção mês a mês do acumulado, com rendimento mensal opcional (0.0–1.0). */
-export function projetarAcumulado(
-  sobraMensal: number,
-  nMeses: number,
-  rendimentoMensal = 0
-): number[] {
-  const valores: number[] = [];
-  let acumulado = 0;
-  for (let i = 0; i < nMeses; i++) {
-    acumulado = acumulado * (1 + rendimentoMensal) + sobraMensal;
-    valores.push(Math.round(acumulado));
-  }
-  return valores;
-}
-
-export function avaliarPlano(plano: Plano, sobraMensal: number): ResultadoPlano {
-  const guardarPorMes = Math.ceil(plano.valorAlvo / plano.prazoMeses);
-  const cabe = guardarPorMes <= sobraMensal;
-  return {
-    guardarPorMes,
-    cabeNaSobra: cabe,
-    faltaPorMes: cabe ? 0 : guardarPorMes - sobraMensal,
-    mesesNecessarios: !cabe && sobraMensal > 0 ? Math.ceil(plano.valorAlvo / sobraMensal) : null,
-  };
 }

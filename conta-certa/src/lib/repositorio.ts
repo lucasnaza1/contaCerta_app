@@ -14,6 +14,8 @@ export interface NovaDespesa {
   cartaoId?: string;
   parcelas?: number;
   paga?: boolean;
+  /** Dia do vencimento do pagamento (1–31), opcional. */
+  vencimento?: number;
 }
 
 /**
@@ -29,6 +31,7 @@ export async function adicionarDespesa(dados: NovaDespesa): Promise<void> {
     ...(dados.forma === "cartao" && dados.cartaoId ? { cartaoId: dados.cartaoId } : {}),
     ...(n > 1 ? { compraId: crypto.randomUUID() } : {}),
     ...(dados.paga !== undefined ? { paga: dados.paga } : { paga: false }),
+    ...(dados.vencimento !== undefined ? { vencimento: dados.vencimento } : {}),
   };
   if (n === 1) {
     await db.despesas.add({
@@ -59,7 +62,9 @@ export async function marcarPaga(id: string, paga: boolean): Promise<void> {
 /** Edita a despesa; se pertencer a um grupo, pergunta via `escopo` ("uma"|"todas"). */
 export async function editarDespesa(
   id: string,
-  dados: Partial<Pick<Despesa, "descricao" | "valor" | "mes" | "forma" | "cartaoId" | "paga">>,
+  dados: Partial<
+    Pick<Despesa, "descricao" | "valor" | "mes" | "forma" | "cartaoId" | "paga" | "vencimento">
+  >,
   escopo: "uma" | "todas" = "todas"
 ): Promise<void> {
   const atual = await db.despesas.get(id);
@@ -183,14 +188,32 @@ export async function listarDoMes(mes: string): Promise<{ despesas: Despesa[]; e
 
 // ---------- Cartões ----------
 
-export async function adicionarCartao(nome: string): Promise<Cartao> {
-  const cartao: Cartao = { id: crypto.randomUUID(), nome: nome.trim() };
+export async function adicionarCartao(
+  nome: string,
+  diaFechamento?: number,
+  diaVencimento?: number
+): Promise<Cartao> {
+  const cartao: Cartao = {
+    id: crypto.randomUUID(),
+    nome: nome.trim(),
+    ...(diaFechamento !== undefined ? { diaFechamento } : {}),
+    ...(diaVencimento !== undefined ? { diaVencimento } : {}),
+  };
   await db.cartoes.add(cartao);
   return cartao;
 }
 
 export async function renomearCartao(id: string, nome: string): Promise<void> {
   await db.cartoes.update(id, { nome: nome.trim() });
+}
+
+/** Atualiza os dias de fechamento e vencimento da fatura (undefined limpa). */
+export async function atualizarDiasCartao(
+  id: string,
+  diaFechamento: number | undefined,
+  diaVencimento: number | undefined
+): Promise<void> {
+  await db.cartoes.update(id, { diaFechamento, diaVencimento });
 }
 
 /** Remove o cartão e desvincula as despesas que o usavam. */

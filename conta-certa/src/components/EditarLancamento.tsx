@@ -6,7 +6,7 @@ import { CampoValor } from "@/components/CampoValor";
 import { IconeBanco } from "@/components/IconeBanco";
 import { editarDespesa, editarEntrada, excluirDespesa, excluirEntrada } from "@/lib/repositorio";
 import { formatarBRL } from "@/lib/dinheiro";
-import { nomeMes, somarMes } from "@/lib/mes";
+import { diaValido, nomeMes, somarMes } from "@/lib/mes";
 import type { Cartao, Despesa, Entrada, Forma } from "@/lib/tipos";
 
 const inputClasse =
@@ -59,6 +59,8 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
   const [mes, setMes] = useState(item.mes);
   const [forma, setForma] = useState<Forma>(despesa.forma ?? "pix");
   const [cartaoId, setCartaoId] = useState(despesa.cartaoId ?? "");
+  // Vencimento do pagamento (dia 1–31), opcional.
+  const [vencimento, setVencimento] = useState(despesa.vencimento ? String(despesa.vencimento) : "");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
@@ -96,6 +98,11 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
       setErro("Escolha o cartão.");
       return;
     }
+    const diaVencimento = vencimento ? Number(vencimento) : undefined;
+    if (eDespesa && diaVencimento !== undefined && !diaValido(diaVencimento)) {
+      setErro("O dia de vencimento deve ser entre 1 e 31.");
+      return;
+    }
 
     setSalvando(true);
     setErro("");
@@ -109,6 +116,7 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
             mes,
             forma,
             ...(forma === "cartao" ? { cartaoId } : { cartaoId: undefined }),
+            ...(diaVencimento !== undefined ? { vencimento: diaVencimento } : { vencimento: undefined }),
           },
           "todas"
         );
@@ -252,6 +260,27 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
               </button>
             </div>
           </div>
+
+          {/* Vencimento opcional do pagamento */}
+          {eDespesa && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="editar-vencimento" className="text-sm font-medium">
+                Vence no dia <span className="font-normal text-foreground/50">(opcional)</span>
+              </label>
+              <input
+                id="editar-vencimento"
+                inputMode="numeric"
+                disabled={salvando || excluindo}
+                value={vencimento}
+                onChange={(e) => {
+                  setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
+                  setErro("");
+                }}
+                placeholder="1–31"
+                className={`${inputClasse} w-24`}
+              />
+            </div>
+          )}
 
           {eDespesa && (
             <fieldset className="flex flex-col gap-2">

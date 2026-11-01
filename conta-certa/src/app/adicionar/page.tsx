@@ -8,7 +8,7 @@ import { CampoValor } from "@/components/CampoValor";
 import { IconeBanco } from "@/components/IconeBanco";
 import { adicionarDespesa, adicionarEntrada } from "@/lib/repositorio";
 import { formatarBRL } from "@/lib/dinheiro";
-import { dividirParcelas, mesAtual, mesValido, nomeMes, somarMes } from "@/lib/mes";
+import { dividirParcelas, diaValido, mesAtual, mesValido, nomeMes, somarMes } from "@/lib/mes";
 import type { Forma } from "@/lib/tipos";
 import { useDados } from "@/lib/useDados";
 
@@ -29,15 +29,18 @@ export default function PaginaAdicionar() {
   const [valorCentavos, setValorCentavos] = useState(0);
   const [descricao, setDescricao] = useState("");
   // Mês vem da query (?mes=2026-10) quando aberto a partir da tela Mês.
+  // Sem query, abre no mês subsequente (faturas de cartão vencem no mês seguinte).
   const [mes, setMes] = useState(() => {
-    if (typeof window === "undefined") return mesAtual();
+    if (typeof window === "undefined") return somarMes(mesAtual(), 1);
     const m = new URLSearchParams(window.location.search).get("mes");
-    return m && mesValido(m) ? m : mesAtual();
+    return m && mesValido(m) ? m : somarMes(mesAtual(), 1);
   });
   const [forma, setForma] = useState<Forma>("pix");
   const [cartaoId, setCartaoId] = useState("");
   const [parcelas, setParcelas] = useState(1);
   const [recebida, setRecebida] = useState(false);
+  // Vencimento opcional do pagamento (dia 1–31).
+  const [vencimento, setVencimento] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -51,6 +54,7 @@ export default function PaginaAdicionar() {
     setCartaoId("");
     setParcelas(1);
     setRecebida(false);
+    setVencimento("");
     setErro("");
   }
 
@@ -66,6 +70,11 @@ export default function PaginaAdicionar() {
     }
     if (modo === "despesa" && forma === "cartao" && !cartaoId) {
       setErro("Escolha o cartão.");
+      return;
+    }
+    const diaVencimento = vencimento ? Number(vencimento) : undefined;
+    if (diaVencimento !== undefined && !diaValido(diaVencimento)) {
+      setErro("O dia de vencimento deve ser entre 1 e 31.");
       return;
     }
 
@@ -89,6 +98,7 @@ export default function PaginaAdicionar() {
           forma,
           ...(forma === "cartao" ? { cartaoId } : {}),
           parcelas,
+          ...(diaVencimento !== undefined ? { vencimento: diaVencimento } : {}),
         });
       }
 
@@ -259,6 +269,27 @@ export default function PaginaAdicionar() {
               ))}
             </select>
           </div>
+
+          {/* Vencimento opcional do pagamento */}
+          {modo === "despesa" && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="vencimento" className="text-sm font-medium">
+                Vence no dia <span className="font-normal text-foreground/50">(opcional)</span>
+              </label>
+              <input
+                id="vencimento"
+                inputMode="numeric"
+                disabled={salvando}
+                value={vencimento}
+                onChange={(e) => {
+                  setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
+                  setErro("");
+                }}
+                placeholder="1–31"
+                className={`${inputClasse} w-24`}
+              />
+            </div>
+          )}
 
           {modo === "despesa" && (
             <fieldset className="flex flex-col gap-2">

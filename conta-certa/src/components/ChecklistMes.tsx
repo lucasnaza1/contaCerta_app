@@ -159,6 +159,7 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
             ) : despesa.forma === "cartao" ? (
               "Cartão"
             ) : null}
+            {despesa.vencimento ? <span>vence dia {despesa.vencimento}</span> : null}
           </span>
         </span>
         <span
@@ -277,6 +278,14 @@ function CartaoFatura({ fatura, mesFuturo, onEditar }: CartaoFaturaProps) {
           <span className="block text-xs text-foreground/50">
             {fatura.despesas.length} compra{fatura.despesas.length > 1 ? "s" : ""} ·{" "}
             {tudoPago ? "tudo pago" : `${pendentes} a pagar`}
+            {(fatura.diaFechamento || fatura.diaVencimento) && (
+              <>
+                {" · "}
+                {fatura.diaFechamento ? `fecha dia ${fatura.diaFechamento}` : null}
+                {fatura.diaFechamento && fatura.diaVencimento ? " · " : null}
+                {fatura.diaVencimento ? `vence dia ${fatura.diaVencimento}` : null}
+              </>
+            )}
           </span>
         </span>
         <span

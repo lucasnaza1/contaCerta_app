@@ -17,11 +17,13 @@ export default function PaginaMes() {
   const { carregando, config, cartoes, despesas, entradas } = useDados();
   const { diasSemBackup } = useUltimoBackup();
   const mesRef = mesAtual();
+  // Contas de cartão costumam ser pagas no mês seguinte: abre por padrão nele.
+  const mesPadrao = somarMes(mesRef, 1);
   // Abre no mês passado pela URL (ex.: vindo da tela Meses).
   const [mes, setMes] = useState(() => {
-    if (typeof window === "undefined") return mesRef;
+    if (typeof window === "undefined") return mesPadrao;
     const m = new URLSearchParams(window.location.search).get("mes");
-    return m && mesValido(m) ? m : mesRef;
+    return m && mesValido(m) ? m : mesPadrao;
   });
 
   if (carregando) {

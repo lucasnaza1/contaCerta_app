@@ -1,15 +1,17 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, Pencil, Trash2, Upload } from "lucide-react";
+import { CalendarDays, Download, Pencil, Trash2, Upload } from "lucide-react";
 import { Abas } from "@/components/Abas";
 import { IconeBanco } from "@/components/IconeBanco";
 import { exportarBackup, lerBackup, type ResumoBackup } from "@/lib/db";
 import {
   adicionarCartao,
+  atualizarDiasCartao,
   removerCartao,
   renomearCartao,
 } from "@/lib/repositorio";
+import { diaValido } from "@/lib/mes";
 import { registrarBackupFeito, useUltimoBackup } from "@/lib/useUltimoBackup";
 import { useDados } from "@/lib/useDados";
 import { useModoEscuro } from "@/lib/useModoEscuro";
@@ -22,6 +24,10 @@ export default function PaginaAjustes() {
   const { escuro, alternar } = useModoEscuro();
   const { ultimo } = useUltimoBackup();
   const [nomeCartao, setNomeCartao] = useState("");
+  // Cadastro do fechamento/vencimento da fatura de um cartão existente.
+  const [cartaoEditando, setCartaoEditando] = useState<string | null>(null);
+  const [fechamento, setFechamento] = useState("");
+  const [vencimentoFatura, setVencimentoFatura] = useState("");
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const inputArquivo = useRef<HTMLInputElement>(null);
@@ -63,6 +69,32 @@ export default function PaginaAjustes() {
     }
     await adicionarCartao(nome);
     setNomeCartao("");
+  }
+
+  /** Abre o formulário de fechamento/vencimento de um cartão. */
+  function abrirDiasFatura(id: string) {
+    const c = cartoes.find((x) => x.id === id);
+    setCartaoEditando(id);
+    setFechamento(c?.diaFechamento ? String(c.diaFechamento) : "");
+    setVencimentoFatura(c?.diaVencimento ? String(c.diaVencimento) : "");
+    setErro("");
+    setAviso("");
+  }
+
+  async function salvarDiasFatura() {
+    if (!cartaoEditando) return;
+    const f = fechamento ? Number(fechamento) : undefined;
+    const v = vencimentoFatura ? Number(vencimentoFatura) : undefined;
+    if ((f !== undefined && !diaValido(f)) || (v !== undefined && !diaValido(v))) {
+      setErro("Os dias devem ser entre 1 e 31.");
+      return;
+    }
+    await atualizarDiasCartao(cartaoEditando, f, v);
+    setCartaoEditando(null);
+    setFechamento("");
+    setVencimentoFatura("");
+    setErro("");
+    setAviso("Fatura do cartão atualizada.");
   }
 
   async function aoRenomearCartao(id: string, nomeAtual: string) {
@@ -164,29 +196,111 @@ export default function PaginaAjustes() {
                 <li className="text-sm text-foreground/50">Nenhum cartão cadastrado.</li>
               ) : (
                 cartoes.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between gap-2 py-1">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <IconeBanco nome={c.nome} tamanho={24} />
-                      <span className="truncate text-[15px]">{c.nome}</span>
-                    </span>
-                    <span className="flex shrink-0 gap-1">
-                      <button
-                        type="button"
-                        onClick={() => aoRenomearCartao(c.id, c.nome)}
-                        aria-label={`Renomear ${c.nome}`}
-                        className="botao-min rounded-full px-2 text-foreground/50 hover:text-foreground"
-                      >
-                        <Pencil aria-hidden className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => aoRemoverCartao(c.id, c.nome)}
-                        aria-label={`Remover ${c.nome}`}
-                        className="botao-min rounded-full px-2 text-foreground/40 hover:text-despesa"
-                      >
-                        <Trash2 aria-hidden className="h-4 w-4" />
-                      </button>
-                    </span>
+                  <li key={c.id} className="flex flex-col gap-2 py-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <IconeBanco nome={c.nome} tamanho={24} />
+                        <span className="truncate text-[15px]">{c.nome}</span>
+                      </span>
+                      {(c.diaFechamento || c.diaVencimento) && (
+                        <span className="hidden shrink-0 text-xs text-foreground/50 sm:inline">
+                          fecha dia {c.diaFechamento ?? "—"} · vence dia{" "}
+                          {c.diaVencimento ?? "—"}
+                        </span>
+                      )}
+                      <span className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => abrirDiasFatura(c.id)}
+                          aria-label={`Fechamento e vencimento da fatura de ${c.nome}`}
+                          className="botao-min rounded-full px-2 text-foreground/50 hover:text-foreground"
+                        >
+                          <CalendarDays aria-hidden className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => aoRenomearCartao(c.id, c.nome)}
+                          aria-label={`Renomear ${c.nome}`}
+                          className="botao-min rounded-full px-2 text-foreground/50 hover:text-foreground"
+                        >
+                          <Pencil aria-hidden className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => aoRemoverCartao(c.id, c.nome)}
+                          aria-label={`Remover ${c.nome}`}
+                          className="botao-min rounded-full px-2 text-foreground/40 hover:text-despesa"
+                        >
+                          <Trash2 aria-hidden className="h-4 w-4" />
+                        </button>
+                      </span>
+                    </div>
+                    {(c.diaFechamento || c.diaVencimento) && (
+                      <p className="text-xs text-foreground/50 sm:hidden">
+                        fecha dia {c.diaFechamento ?? "—"} · vence dia {c.diaVencimento ?? "—"}
+                      </p>
+                    )}
+
+                    {/* Fechamento e vencimento da fatura */}
+                    {cartaoEditando === c.id && (
+                      <div className="flex flex-col gap-2 rounded-xl bg-background/60 p-3">
+                        <p className="text-xs font-medium text-foreground/60">
+                          Fatura de {c.nome}
+                        </p>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div className="w-28">
+                            <label
+                              htmlFor={`fechamento-${c.id}`}
+                              className="text-xs font-medium text-foreground/60"
+                            >
+                              Fecha dia
+                            </label>
+                            <input
+                              id={`fechamento-${c.id}`}
+                              inputMode="numeric"
+                              value={fechamento}
+                              onChange={(e) =>
+                                setFechamento(e.target.value.replace(/\D/g, "").slice(0, 2))
+                              }
+                              placeholder="1–31"
+                              className={inputClasse}
+                            />
+                          </div>
+                          <div className="w-28">
+                            <label
+                              htmlFor={`vencimento-fatura-${c.id}`}
+                              className="text-xs font-medium text-foreground/60"
+                            >
+                              Vence dia
+                            </label>
+                            <input
+                              id={`vencimento-fatura-${c.id}`}
+                              inputMode="numeric"
+                              value={vencimentoFatura}
+                              onChange={(e) =>
+                                setVencimentoFatura(e.target.value.replace(/\D/g, "").slice(0, 2))
+                              }
+                              placeholder="1–31"
+                              className={inputClasse}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={salvarDiasFatura}
+                            className="botao-min shrink-0 rounded-xl bg-menta px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-menta/80"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCartaoEditando(null)}
+                            className="botao-min shrink-0 rounded-xl px-3 py-2.5 text-sm font-medium text-foreground/60 hover:text-foreground"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))
               )}

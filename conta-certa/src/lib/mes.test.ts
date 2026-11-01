@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { compararMeses, diferencaMeses, dividirParcelas, somarMes } from "./mes";
+import {
+  aplicarMascaraMoeda,
+  compararMeses,
+  diaValido,
+  diferencaMeses,
+  dividirParcelas,
+  somarMes,
+} from "./mes";
 
 describe("dividirParcelas", () => {
   it("R$ 100,00 em 3x vira 33,33 + 33,33 + 33,34", () => {
@@ -44,5 +51,42 @@ describe("somarMes / compararMeses / diferencaMeses", () => {
     expect(diferencaMeses("2026-10", "2026-10")).toBe(0);
     expect(diferencaMeses("2026-10", "2027-01")).toBe(3);
     expect(diferencaMeses("2027-01", "2026-10")).toBe(-3);
+  });
+});
+
+describe("aplicarMascaraMoeda (máscara bancária)", () => {
+  it("'100' vira 1,00 (100 centavos)", () => {
+    expect(aplicarMascaraMoeda("100")).toEqual({ texto: "1,00", centavos: 100 });
+  });
+
+  it("'1234' vira 12,34", () => {
+    expect(aplicarMascaraMoeda("1234")).toEqual({ texto: "12,34", centavos: 1234 });
+  });
+
+  it("'123456' vira 1.234,56 com milhar", () => {
+    expect(aplicarMascaraMoeda("123456")).toEqual({ texto: "1.234,56", centavos: 123456 });
+  });
+
+  it("texto vazio não gera valor", () => {
+    expect(aplicarMascaraMoeda("")).toEqual({ texto: "", centavos: 0 });
+  });
+
+  it("ignora não-dígitos (cola de 'R$ 5,00')", () => {
+    expect(aplicarMascaraMoeda("R$ 5,00")).toEqual({ texto: "5,00", centavos: 500 });
+  });
+});
+
+describe("diaValido", () => {
+  it("aceita dias de 1 a 31", () => {
+    expect(diaValido(1)).toBe(true);
+    expect(diaValido(31)).toBe(true);
+    expect(diaValido(15)).toBe(true);
+  });
+
+  it("rejeita fora do intervalo e não inteiros", () => {
+    expect(diaValido(0)).toBe(false);
+    expect(diaValido(32)).toBe(false);
+    expect(diaValido(2.5)).toBe(false);
+    expect(diaValido(NaN)).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { NumericFormat } from "react-number-format";
+import { aplicarMascaraMoeda, formatarNumero } from "@/lib/mes";
 
 interface CampoValorProps {
   id: string;
@@ -17,8 +17,9 @@ interface CampoValorProps {
 }
 
 /**
- * Campo de dinheiro com máscara pt-BR: prefixo "R$ ", milhar ".", decimal ",",
- * 2 casas fixas, sem negativos. Entrega o valor **em centavos**.
+ * Campo de dinheiro com máscara bancária pt-BR: os 2 últimos dígitos
+ * digitados são os centavos ("100" -> "1,00"), então não é preciso tocar
+ * na vírgula. O texto é derivado de `centavos` (sem estado local).
  */
 export function CampoValor({
   id,
@@ -36,30 +37,32 @@ export function CampoValor({
       <label htmlFor={id} className="text-sm font-medium">
         {label}
       </label>
-      <NumericFormat
-        id={id}
-        value={centavos ? centavos / 100 : ""}
-        onValueChange={(valores) => {
-          // floatValue pode ser undefined quando o campo é esvaziado.
-          onCentavos(Math.round((valores.floatValue ?? 0) * 100));
-        }}
-        thousandSeparator="."
-        decimalSeparator=","
-        prefix="R$ "
-        decimalScale={2}
-        fixedDecimalScale
-        allowNegative={false}
-        inputMode="decimal"
-        autoComplete="off"
-        disabled={disabled}
-        autoFocus={autoFocus}
-        placeholder="R$ 0,00"
-        aria-invalid={!!erro || undefined}
-        aria-describedby={erro ? `${id}-erro` : descricao ? `${id}-descricao` : undefined}
-        className={`botao-min w-full min-w-0 rounded-xl border bg-campo px-4 py-2.5 text-[15px] font-semibold tabular-nums outline-none placeholder:font-normal placeholder:text-foreground/45 focus:border-previsao focus:ring-2 focus:ring-menta ${
-          erro ? "border-despesa" : "border-borda"
-        }`}
-      />
+      <div className="relative">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-[15px] font-semibold tabular-nums text-foreground/50"
+        >
+          R$
+        </span>
+        <input
+          id={id}
+          inputMode="numeric"
+          autoComplete="off"
+          disabled={disabled}
+          autoFocus={autoFocus}
+          value={centavos ? formatarNumero(centavos) : ""}
+          onChange={(e) => {
+            const { centavos: novo } = aplicarMascaraMoeda(e.target.value);
+            onCentavos(novo);
+          }}
+          placeholder="0,00"
+          aria-invalid={!!erro || undefined}
+          aria-describedby={erro ? `${id}-erro` : descricao ? `${id}-descricao` : undefined}
+          className={`botao-min w-full min-w-0 rounded-xl border bg-campo py-2.5 pr-4 pl-14 text-[15px] font-semibold tabular-nums outline-none placeholder:font-normal placeholder:text-foreground/45 focus:border-previsao focus:ring-2 focus:ring-menta ${
+            erro ? "border-despesa" : "border-borda"
+          }`}
+        />
+      </div>
       {descricao && !erro && (
         <p id={`${id}-descricao`} className="text-xs text-foreground/50">
           {descricao}

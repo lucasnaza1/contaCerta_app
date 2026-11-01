@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   agruparFaturas,
-  avaliarPlano,
   calcularSobra,
   consolidar,
-  projetarAcumulado,
   resumirMes,
+  simularEconomia,
 } from "./calculos";
-import type { Cartao, Config, Despesa, Entrada, FixaExterna, Plano } from "./tipos";
+import type { Cartao, Config, Despesa, Entrada, FixaExterna } from "./tipos";
 
 const config: Config = { id: "config", mesInicial: "2026-10" };
 
@@ -90,7 +89,7 @@ describe("consolidar", () => {
 
 describe("agruparFaturas", () => {
   const cartoes: Cartao[] = [
-    { id: "c1", nome: "Nubank" },
+    { id: "c1", nome: "Nubank", diaFechamento: 20, diaVencimento: 27 },
     { id: "c2", nome: "Itaú" },
   ];
 
@@ -141,6 +140,24 @@ describe("agruparFaturas", () => {
     );
     expect(faturas.map((f) => f.cartaoId)).toEqual(["c2", "c1"]);
   });
+
+  it("leva os dias de fechamento e vencimento da fatura do cartão", () => {
+    const faturas = agruparFaturas(
+      [despesa("2026-10", 1000, { forma: "cartao", cartaoId: "c1" })],
+      cartoes
+    );
+    expect(faturas[0].diaFechamento).toBe(20);
+    expect(faturas[0].diaVencimento).toBe(27);
+  });
+
+  it("cartão sem dias cadastrados não preenche fechamento/vencimento", () => {
+    const faturas = agruparFaturas(
+      [despesa("2026-10", 900, { forma: "cartao", cartaoId: "c2" })],
+      cartoes
+    );
+    expect(faturas[0].diaFechamento).toBeUndefined();
+    expect(faturas[0].diaVencimento).toBeUndefined();
+  });
 });
 
 describe("calcularSobra", () => {
@@ -158,42 +175,39 @@ describe("calcularSobra", () => {
   });
 });
 
-describe("projetarAcumulado", () => {
-  it("sem rendimento é sobra × meses", () => {
-    expect(projetarAcumulado(100000, 3)).toEqual([100000, 200000, 300000]);
+describe("simularEconomia", () => {
+  it("sem rendimento: depósito mensal é valor-alvo ÷ meses, acumulando mês a mês", () => {
+    const s = simularEconomia(120000, 12, "2026-11");
+    expect(s.depositoMensal).toBe(10000);
+    expect(s.meses).toHaveLength(12);
+    expect(s.meses[0]).toEqual({ mes: "2026-11", deposito: 10000, rendimento: 0, acumulado: 10000 });
+    expect(s.meses[11]).toEqual({ mes: "2027-10", deposito: 10000, rendimento: 0, acumulado: 120000 });
+    expect(s.mesFinal).toBe("2027-10");
+    expect(s.total).toBe(120000);
   });
 
-  it("com rendimento compõe mês a mês", () => {
-    // 100000 * 1,01 + 100000 = 201000; 201000 * 1,01 + 100000 = 303010
-    expect(projetarAcumulado(100000, 2, 0.01)).toEqual([100000, 201000]);
-    expect(projetarAcumulado(100000, 3, 0.01)).toEqual([100000, 201000, 303010]);
-  });
-});
-
-describe("avaliarPlano", () => {
-  const plano: Plano = { id: "p1", nome: "Viagem", valorAlvo: 120000, prazoMeses: 12 };
-
-  it("plano que cabe na sobra", () => {
-    const r = avaliarPlano(plano, 20000);
-    expect(r).toEqual({ guardarPorMes: 10000, cabeNaSobra: true, faltaPorMes: 0, mesesNecessarios: null });
+  it("diferença de centavos vai na última parcela", () => {
+    const s = simularEconomia(10000, 3, "2026-11");
+    expect(s.meses.map((m) => m.deposito)).toEqual([3333, 3333, 3334]);
+    expect(s.total).toBe(10000);
   });
 
-  it("plano que não cabe calcula falta e meses necessários", () => {
-    const r = avaliarPlano(plano, 8000);
-    expect(r.guardarPorMes).toBe(10000);
-    expect(r.cabeNaSobra).toBe(false);
-    expect(r.faltaPorMes).toBe(2000);
-    expect(r.mesesNecessarios).toBe(15); // ceil(120000 / 8000)
+  it("com rendimento, acumulado compõe e o total supera o alvo", () => {
+    const s = simularEconomia(100000, 2, "2026-11", 0.01);
+    expect(s.meses[0]).toEqual({ mes: "2026-11", deposito: 50000, rendimento: 0, acumulado: 50000 });
+    expect(s.meses[1].rendimento).toBe(500);
+    expect(s.total).toBe(100500);
   });
 
-  it("sem sobra não estima meses", () => {
-    const r = avaliarPlano(plano, 0);
-    expect(r.mesesNecessarios).toBeNull();
-    expect(r.faltaPorMes).toBe(10000);
+  it("um único mês deposita o valor inteiro", () => {
+    const s = simularEconomia(50000, 1, "2026-11");
+    expect(s.meses).toHaveLength(1);
+    expect(s.meses[0].deposito).toBe(50000);
+    expect(s.total).toBe(50000);
   });
 
-  it("arredonda para cima quando o valor não divide exato", () => {
-    const r = avaliarPlano({ ...plano, valorAlvo: 10000, prazoMeses: 3 }, 4000);
-    expect(r.guardarPorMes).toBe(3334); // ceil(10000/3)
+  it("atravessa a virada do ano", () => {
+    const s = simularEconomia(10000, 3, "2026-11");
+    expect(s.meses.map((m) => m.mes)).toEqual(["2026-11", "2026-12", "2027-01"]);
   });
 });

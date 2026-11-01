@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   agruparFaturas,
+  calcularAlertasVencimento,
   calcularSobra,
   consolidar,
+  diaVencimentoDespesa,
   resumirMes,
   simularEconomia,
 } from "./calculos";
@@ -157,6 +159,83 @@ describe("agruparFaturas", () => {
     );
     expect(faturas[0].diaFechamento).toBeUndefined();
     expect(faturas[0].diaVencimento).toBeUndefined();
+  });
+});
+
+describe("diaVencimentoDespesa", () => {
+  const cartoes: Cartao[] = [{ id: "c1", nome: "Nubank", diaFechamento: 20, diaVencimento: 27 }];
+
+  it("despesa com dia próprio tem precedência", () => {
+    expect(diaVencimentoDespesa(despesa("2026-11", 100, { vencimento: 5 }), cartoes)).toBe(5);
+  });
+
+  it("despesa de cartão herda o vencimento da fatura", () => {
+    const d = despesa("2026-11", 100, { forma: "cartao", cartaoId: "c1" });
+    expect(diaVencimentoDespesa(d, cartoes)).toBe(27);
+  });
+
+  it("despesa de cartão sem dia na fatura não gera vencimento", () => {
+    const d = despesa("2026-11", 100, { forma: "cartao", cartaoId: "inexistente" });
+    expect(diaVencimentoDespesa(d, cartoes)).toBeUndefined();
+  });
+
+  it("pix/boleto sem dia próprio não gera vencimento", () => {
+    expect(diaVencimentoDespesa(despesa("2026-11", 100), cartoes)).toBeUndefined();
+  });
+});
+
+describe("calcularAlertasVencimento", () => {
+  const cartoes: Cartao[] = [
+    { id: "c1", nome: "Nubank", diaFechamento: 20, diaVencimento: 10 },
+    { id: "c2", nome: "Itaú", diaVencimento: 28 },
+  ];
+  const hoje = (iso: string) => () => new Date(`${iso}T12:00:00`);
+
+  it("agrupa por data, soma o total e ordena do mais urgente", () => {
+    const despesas = [
+      despesa("2026-11", 5000, { vencimento: 12 }),
+      despesa("2026-11", 3000, { vencimento: 12 }),
+      despesa("2026-11", 100, { forma: "cartao", cartaoId: "c1" }), // dia 10
+    ];
+    const alertas = calcularAlertasVencimento(despesas, cartoes, "2026-11", hoje("2026-11-05"));
+    expect(alertas.map((a) => a.data)).toEqual(["2026-11-10", "2026-11-12"]);
+    expect(alertas[0].total).toBe(100);
+    expect(alertas[1].total).toBe(8000);
+    expect(alertas[1].despesas).toHaveLength(2);
+  });
+
+  it("classifica urgência por dias restantes", () => {
+    const despesas = [
+      despesa("2026-11", 100, { vencimento: 4 }),  // vencida ontem
+      despesa("2026-11", 100, { vencimento: 5 }),  // hoje
+      despesa("2026-11", 100, { vencimento: 6 }),  // amanhã
+      despesa("2026-11", 100, { vencimento: 20 }), // próximos
+    ];
+    const alertas = calcularAlertasVencimento(despesas, cartoes, "2026-11", hoje("2026-11-05"));
+    expect(alertas.map((a) => a.urgencia)).toEqual(["vencida", "hoje", "amanha", "proximos"]);
+    expect(alertas[0].dias).toBe(-1);
+  });
+
+  it("ignora despesas pagas e sem vencimento", () => {
+    const despesas = [
+      despesa("2026-11", 100, { vencimento: 10, paga: true }),
+      despesa("2026-11", 100),
+    ];
+    expect(calcularAlertasVencimento(despesas, cartoes, "2026-11", hoje("2026-11-05"))).toEqual([]);
+  });
+
+  it("dia 31 em fevereiro vira 28", () => {
+    const despesas = [despesa("2027-02", 100, { vencimento: 31 })];
+    const alertas = calcularAlertasVencimento(despesas, cartoes, "2027-01", hoje("2027-01-31"));
+    expect(alertas[0].data).toBe("2027-02-28");
+  });
+
+  it("despesa de mês passado cai no mês de referência", () => {
+    const despesas = [despesa("2026-10", 100, { forma: "cartao", cartaoId: "c2" })]; // vence 28
+    const alertas = calcularAlertasVencimento(despesas, cartoes, "2026-11", hoje("2026-11-05"));
+    // A fatura do mês passado vence 28/11.
+    expect(alertas[0].data).toBe("2026-11-28");
+    expect(alertas[0].urgencia).toBe("proximos");
   });
 });
 

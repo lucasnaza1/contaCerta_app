@@ -5,10 +5,11 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Abas } from "@/components/Abas";
 import { AguaNivel } from "@/components/AguaNivel";
+import { AlertasVencimento } from "@/components/AlertasVencimento";
 import { CadastroInicial } from "@/components/CadastroInicial";
 import { ChecklistMes } from "@/components/ChecklistMes";
 import { ResumoMesHeader } from "@/components/ResumoMes";
-import { resumirMes } from "@/lib/calculos";
+import { calcularAlertasVencimento, resumirMes } from "@/lib/calculos";
 import { mesAtual, mesValido, nomeMesAno, somarMes } from "@/lib/mes";
 import { useDados } from "@/lib/useDados";
 import { useUltimoBackup } from "@/lib/useUltimoBackup";
@@ -47,6 +48,12 @@ export default function PaginaMes() {
   const resumo = resumirMes(config, despesas, entradas, mes);
   // Proporção gasta das entradas do mês, para o nível da água.
   const proporcaoGasta = resumo.entradas > 0 ? resumo.despesas / resumo.entradas : 1;
+  // Alertas: despesas pendentes do mês atual para frente (inclui vencidas).
+  const alertas = calcularAlertasVencimento(
+    despesas.filter((d) => d.mes >= mesRef),
+    cartoes,
+    mesRef
+  ).slice(0, 5);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -80,6 +87,7 @@ export default function PaginaMes() {
               exporta um backup. Toque em Ajustes → Backup para não perder seus dados.
             </p>
           )}
+          <AlertasVencimento alertas={alertas} />
           <ChecklistMes
             mes={mes}
             mesRef={mesRef}

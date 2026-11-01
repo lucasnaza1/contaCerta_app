@@ -6,7 +6,7 @@ import { Check, ChevronDown, Plus } from "lucide-react";
 import { EditarLancamento } from "@/components/EditarLancamento";
 import { IconeBanco } from "@/components/IconeBanco";
 import { IconeForma } from "@/components/IconeForma";
-import { agruparFaturas, type Fatura } from "@/lib/calculos";
+import { agruparFaturas, diaVencimentoDespesa, type Fatura } from "@/lib/calculos";
 import { marcarPaga, marcarRecebida } from "@/lib/repositorio";
 import { formatarBRL } from "@/lib/dinheiro";
 import { nomeMesCurto, somarMes } from "@/lib/mes";
@@ -109,6 +109,8 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
     : undefined;
   const parcela =
     despesa.parcela && despesa.parcelas ? ` ${despesa.parcela}/${despesa.parcelas}` : "";
+  // Vencimento efetivo: o próprio ou o da fatura do cartão.
+  const vencimento = diaVencimentoDespesa(despesa, cartoes);
 
   async function alternar() {
     if (salvando) return;
@@ -159,7 +161,7 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
             ) : despesa.forma === "cartao" ? (
               "Cartão"
             ) : null}
-            {despesa.vencimento ? <span>vence dia {despesa.vencimento}</span> : null}
+            {vencimento ? <span>vence dia {vencimento}</span> : null}
           </span>
         </span>
         <span

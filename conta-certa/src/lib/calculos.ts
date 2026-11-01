@@ -1,4 +1,4 @@
-import { dividirParcelas, somarMes } from "./mes";
+import { dataVencimento, diasAteData, dividirParcelas, somarMes } from "./mes";
 import type { Cartao, Config, Despesa, Entrada, FixaExterna } from "./tipos";
 
 // Funções puras de cálculo (sem Dexie). Mês a mês: cada mês é fechado
@@ -135,7 +135,71 @@ export function agruparFaturas(despesas: Despesa[], cartoes: Cartao[]): Fatura[]
   return [...faturas.values()].sort((a, b) => b.total - a.total);
 }
 
-// ---------- Simular ----------
+// ---------- Alertas de vencimento ----------
+
+export type UrgenciaAlerta = "vencida" | "hoje" | "amanha" | "proximos";
+
+/** Uma conta a pagar agrupada por dia de vencimento. */
+export interface AlertaVencimento {
+  /** Data de vencimento real ("AAAA-MM-DD", dia ajustado ao mês). */
+  data: string;
+  /** Dias até o vencimento (negativo = vencida). */
+  dias: number;
+  urgencia: UrgenciaAlerta;
+  /** Despesas pendentes que vencem nesta data, com o total. */
+  despesas: Despesa[];
+  total: number;
+}
+
+/**
+ * Dia de vencimento efetivo de uma despesa: o próprio, ou o da fatura do
+ * cartão (regra do cartão reflete em todas as despesas dele). Pix/boleto
+ * sem dia definido não geram alerta.
+ */
+export function diaVencimentoDespesa(despesa: Despesa, cartoes: Cartao[]): number | undefined {
+  if (despesa.vencimento) return despesa.vencimento;
+  if (despesa.forma === "cartao") {
+    const cartao = cartoes.find((c) => c.id === despesa.cartaoId);
+    return cartao?.diaVencimento;
+  }
+  return undefined;
+}
+
+/**
+ * Agrupa as despesas pendentes por dia de vencimento, do mais urgente ao
+ * menos. Considera despesas do mês de referência para frente; despesas de
+ * meses passados contam como vencidas. Dia 31 em fevereiro vira 28.
+ */
+export function calcularAlertasVencimento(
+  despesas: Despesa[],
+  cartoes: Cartao[],
+  mesRef: string,
+  hoje: () => Date = () => new Date()
+): AlertaVencimento[] {
+  const alertas = new Map<string, AlertaVencimento>();
+  for (const d of despesas) {
+    if (d.paga) continue;
+    const dia = diaVencimentoDespesa(d, cartoes);
+    if (!dia) continue;
+    const mesDaDespesa = d.mes < mesRef ? mesRef : d.mes;
+    const data = dataVencimento(mesDaDespesa, dia);
+    const dias = diasAteData(data, hoje);
+    let a = alertas.get(data);
+    if (!a) {
+      a = {
+        data,
+        dias,
+        urgencia: dias < 0 ? "vencida" : dias === 0 ? "hoje" : dias === 1 ? "amanha" : "proximos",
+        despesas: [],
+        total: 0,
+      };
+      alertas.set(data, a);
+    }
+    a.despesas.push(d);
+    a.total += d.valor;
+  }
+  return [...alertas.values()].sort((a, b) => a.data.localeCompare(b.data));
+}
 
 /** Uma linha da simulação de economia, mês a mês. */
 export interface MesSimulacao {

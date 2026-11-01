@@ -66,6 +66,34 @@ export function diaValido(dia: number): boolean {
   return Number.isInteger(dia) && dia >= 1 && dia <= 31;
 }
 
+/** Quantos dias tem o mês ("2026-02" → 28). */
+export function diasNoMes(mes: string): number {
+  const [ano, m] = mes.split("-").map(Number);
+  return new Date(ano, m, 0).getDate();
+}
+
+/**
+ * Data real de um dia de vencimento no mês: dia 31 em fevereiro vira 28
+ * (mesma regra de fatura de cartão). Retorna "AAAA-MM-DD".
+ */
+export function dataVencimento(mes: string, dia: number): string {
+  const [ano, m] = mes.split("-").map(Number);
+  const diaReal = Math.min(dia, diasNoMes(mes));
+  return `${ano}-${String(m).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
+}
+
+/** Dias entre hoje e a data "AAAA-MM-DD" (negativo = já passou). */
+export function diasAte(dataISO: string): number {
+  return diasAteData(dataISO, () => new Date());
+}
+
+/** Igual a `diasAte`, com a data de "hoje" injetável para testes. */
+export function diasAteData(dataISO: string, hoje: () => Date): number {
+  const agora = hoje();
+  const hojeISO = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`;
+  return Math.round((Date.parse(dataISO) - Date.parse(hojeISO)) / 86400000);
+}
+
 /** 123456 (centavos) -> "R$ 1.234,56" */
 export function formatarMoeda(centavos: number): string {
   return new Intl.NumberFormat("pt-BR", {

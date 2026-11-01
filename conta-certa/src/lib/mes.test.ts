@@ -3,6 +3,9 @@ import {
   aplicarMascaraMoeda,
   compararMeses,
   diaValido,
+  diasAteData,
+  diasNoMes,
+  dataVencimento,
   diferencaMeses,
   dividirParcelas,
   somarMes,
@@ -88,5 +91,42 @@ describe("diaValido", () => {
     expect(diaValido(32)).toBe(false);
     expect(diaValido(2.5)).toBe(false);
     expect(diaValido(NaN)).toBe(false);
+  });
+});
+
+describe("diasNoMes", () => {
+  it("sabe anos bissextos", () => {
+    expect(diasNoMes("2028-02")).toBe(29);
+    expect(diasNoMes("2027-02")).toBe(28);
+    expect(diasNoMes("2026-11")).toBe(30);
+    expect(diasNoMes("2026-12")).toBe(31);
+  });
+});
+
+describe("dataVencimento", () => {
+  it("monta a data do mês com o dia", () => {
+    expect(dataVencimento("2026-11", 5)).toBe("2026-11-05");
+    expect(dataVencimento("2026-11", 30)).toBe("2026-11-30");
+  });
+
+  it("dia além do fim do mês cai no último dia", () => {
+    expect(dataVencimento("2027-02", 31)).toBe("2027-02-28");
+    expect(dataVencimento("2026-11", 31)).toBe("2026-11-30");
+    expect(dataVencimento("2028-02", 29)).toBe("2028-02-29");
+  });
+});
+
+describe("diasAteData", () => {
+  const hoje = (iso: string) => () => new Date(`${iso}T12:00:00`);
+
+  it("conta dias entre datas do mesmo mês", () => {
+    expect(diasAteData("2026-11-10", hoje("2026-11-05"))).toBe(5);
+    expect(diasAteData("2026-11-05", hoje("2026-11-05"))).toBe(0);
+    expect(diasAteData("2026-11-01", hoje("2026-11-05"))).toBe(-4);
+  });
+
+  it("atravessa virada de mês e de ano", () => {
+    expect(diasAteData("2026-12-01", hoje("2026-11-30"))).toBe(1);
+    expect(diasAteData("2027-01-01", hoje("2026-12-31"))).toBe(1);
   });
 });

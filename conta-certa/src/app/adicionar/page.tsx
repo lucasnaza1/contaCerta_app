@@ -46,6 +46,10 @@ export default function PaginaAdicionar() {
 
   const valorValido = valorCentavos > 0;
   const partes = valorValido && parcelas > 1 ? dividirParcelas(valorCentavos, parcelas) : null;
+  // Cartão escolhido: a fatura dele define o vencimento.
+  const cartaoEscolhido = cartoes.find((c) => c.id === cartaoId);
+  const vencimentoDaFatura =
+    forma === "cartao" && cartaoEscolhido?.diaVencimento ? cartaoEscolhido.diaVencimento : undefined;
 
   function limparFormulario() {
     setValorCentavos(0);
@@ -270,25 +274,32 @@ export default function PaginaAdicionar() {
             </select>
           </div>
 
-          {/* Vencimento opcional do pagamento */}
-          {modo === "despesa" && (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="vencimento" className="text-sm font-medium">
-                Vence no dia <span className="font-normal text-foreground/50">(opcional)</span>
-              </label>
-              <input
-                id="vencimento"
-                inputMode="numeric"
-                disabled={salvando}
-                value={vencimento}
-                onChange={(e) => {
-                  setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
-                  setErro("");
-                }}
-                placeholder="1–31"
-                className={`${inputClasse} w-24`}
-              />
-            </div>
+          {/* Vencimento opcional do pagamento (cartão segue a fatura) */}
+          {modo === "despesa" && vencimentoDaFatura ? (
+            <p className="rounded-xl bg-menta/15 px-4 py-2 text-sm text-previsao">
+              Vence junto com a fatura do {cartaoEscolhido?.nome}, dia{" "}
+              {vencimentoDaFatura} (definido em Ajustes).
+            </p>
+          ) : (
+            modo === "despesa" && (
+              <div className="flex flex-col gap-1">
+                <label htmlFor="vencimento" className="text-sm font-medium">
+                  Vence no dia <span className="font-normal text-foreground/50">(opcional)</span>
+                </label>
+                <input
+                  id="vencimento"
+                  inputMode="numeric"
+                  disabled={salvando}
+                  value={vencimento}
+                  onChange={(e) => {
+                    setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
+                    setErro("");
+                  }}
+                  placeholder="1–31"
+                  className={`${inputClasse} w-24`}
+                />
+              </div>
+            )
           )}
 
           {modo === "despesa" && (

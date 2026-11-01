@@ -66,6 +66,10 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
   const [confirmando, setConfirmando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
 
+  // Cartão escolhido: a fatura dele define o vencimento quando não há dia próprio.
+  const cartaoEscolhido = cartoes.find((c) => c.id === cartaoId);
+  const vencimentoDaFatura = forma === "cartao" ? cartaoEscolhido?.diaVencimento : undefined;
+
   // Bloqueia rolagem do fundo com o painel aberto.
   useEffect(() => {
     const anterior = document.body.style.overflow;
@@ -261,25 +265,38 @@ function PainelEditar({ item, eDespesa, cartoes, onFechar }: PainelEditarProps) 
             </div>
           </div>
 
-          {/* Vencimento opcional do pagamento */}
-          {eDespesa && (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="editar-vencimento" className="text-sm font-medium">
-                Vence no dia <span className="font-normal text-foreground/50">(opcional)</span>
-              </label>
-              <input
-                id="editar-vencimento"
-                inputMode="numeric"
-                disabled={salvando || excluindo}
-                value={vencimento}
-                onChange={(e) => {
-                  setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
-                  setErro("");
-                }}
-                placeholder="1–31"
-                className={`${inputClasse} w-24`}
-              />
-            </div>
+          {/* Vencimento opcional do pagamento (cartão segue a fatura) */}
+          {eDespesa && vencimentoDaFatura && !vencimento ? (
+            <p className="rounded-xl bg-menta/15 px-4 py-2 text-sm text-previsao">
+              Vence junto com a fatura do {cartaoEscolhido?.nome}, dia{" "}
+              {vencimentoDaFatura} (definido em Ajustes).
+            </p>
+          ) : (
+            eDespesa && (
+              <div className="flex flex-col gap-1">
+                <label htmlFor="editar-vencimento" className="text-sm font-medium">
+                  Vence no dia <span className="font-normal text-foreground/50">(opcional)</span>
+                </label>
+                <input
+                  id="editar-vencimento"
+                  inputMode="numeric"
+                  disabled={salvando || excluindo}
+                  value={vencimento}
+                  onChange={(e) => {
+                    setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
+                    setErro("");
+                  }}
+                  placeholder="1–31"
+                  className={`${inputClasse} w-24`}
+                />
+                {vencimento && vencimentoDaFatura ? (
+                  <p className="text-xs text-foreground/50">
+                    Este dia vale só para esta conta; a fatura do {cartaoEscolhido?.nome} vence dia{" "}
+                    {vencimentoDaFatura}.
+                  </p>
+                ) : null}
+              </div>
+            )
           )}
 
           {eDespesa && (

@@ -14,7 +14,7 @@ import {
   type Fatura,
 } from "@/lib/calculos";
 import { marcarPaga, marcarRecebida } from "@/lib/repositorio";
-import { formatarBRL } from "@/lib/dinheiro";
+import { formatarBRL, formatarNumero } from "@/lib/dinheiro";
 import { nomeMesCurto, somarMes } from "@/lib/mes";
 import type { Cartao, Despesa, Entrada } from "@/lib/tipos";
 
@@ -101,22 +101,24 @@ function NomeRiscado({ texto, riscado }: { texto: string; riscado: boolean }) {
 interface ItemDespesaProps {
   despesa: Despesa;
   cartoes: Cartao[];
-  mesFuturo: boolean;
   onEditar: (d: Despesa) => void;
 }
 
-function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps) {
+function ItemDespesa({ despesa, cartoes, onEditar }: ItemDespesaProps) {
   const [salvando, setSalvando] = useState(false);
   const semMovimento = useReducedMotion();
   const toques = useToqueLongo(alternar, () => onEditar(despesa));
 
-  const nomeCartao = despesa.cartaoId
-    ? cartoes.find((c) => c.id === despesa.cartaoId)?.nome
+  const cartao = despesa.cartaoId
+    ? cartoes.find((c) => c.id === despesa.cartaoId)
     : undefined;
+  const nomeCartao = cartao?.nome;
   const parcela =
     despesa.parcela && despesa.parcelas ? ` ${despesa.parcela}/${despesa.parcelas}` : "";
   // Vencimento efetivo: o próprio ou o da fatura do cartão.
   const vencimento = diaVencimentoDespesa(despesa, cartoes);
+  // Fechamento da fatura do cartão, ao lado do status da despesa.
+  const fechamento = cartao?.diaFechamento;
 
   async function alternar() {
     if (salvando) return;
@@ -155,7 +157,7 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
         <span className="min-w-0 flex-1">
           <NomeRiscado texto={`${despesa.descricao}${parcela}`} riscado={despesa.paga} />
           <span
-            className={`flex min-w-0 items-center gap-1.5 truncate text-xs ${
+            className={`flex min-w-0 flex-wrap items-center gap-1.5 truncate text-xs ${
               despesa.paga ? "text-neutra" : "text-foreground/50"
             }`}
           >
@@ -167,19 +169,16 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
             ) : despesa.forma === "cartao" ? (
               "Cartão"
             ) : null}
+            {fechamento ? <span>fecha dia {fechamento}</span> : null}
             {vencimento ? <span>vence dia {vencimento}</span> : null}
           </span>
         </span>
         <span
           className={`shrink-0 text-[15px] font-semibold tabular-nums transition-colors duration-300 ${
-            despesa.paga
-              ? "text-neutra"
-              : mesFuturo
-                ? "text-previsao"
-                : "text-despesa"
+            despesa.paga ? "text-neutra" : "text-despesa"
           }`}
         >
-          {formatarBRL(despesa.valor)}
+          R$ -{formatarNumero(despesa.valor)}
         </span>
       </button>
     </motion.li>
@@ -188,11 +187,10 @@ function ItemDespesa({ despesa, cartoes, mesFuturo, onEditar }: ItemDespesaProps
 
 interface ItemEntradaProps {
   entrada: Entrada;
-  mesFuturo: boolean;
   onEditar: (e: Entrada) => void;
 }
 
-function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
+function ItemEntrada({ entrada, onEditar }: ItemEntradaProps) {
   const [salvando, setSalvando] = useState(false);
   const semMovimento = useReducedMotion();
   const toques = useToqueLongo(alternar, () => onEditar(entrada));
@@ -228,8 +226,8 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
           aria-label={entrada.recebida ? "Recebida" : "A receber"}
           className={`botao-min flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-xl border-2 ${
             entrada.recebida
-              ? "border-entrada bg-entrada text-white"
-              : "border-borda bg-surface text-entrada"
+              ? "border-previsao bg-previsao text-white"
+              : "border-borda bg-surface text-previsao"
           }`}
         >
           {entrada.recebida ? <Check aria-hidden className="h-5 w-5" strokeWidth={2.5} /> : <Plus aria-hidden className="h-5 w-5" strokeWidth={2.5} />}
@@ -237,18 +235,14 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
         <span className="min-w-0 flex-1">
           <NomeRiscado texto={`${entrada.descricao}${parcela}`} riscado={entrada.recebida} />
           <span
-            className={`block text-xs ${entrada.recebida ? "text-neutra" : "text-entrada"}`}
+            className={`block text-xs ${entrada.recebida ? "text-neutra" : "text-previsao"}`}
           >
             {entrada.recebida ? "Recebida" : "A receber"}
           </span>
         </span>
         <span
           className={`shrink-0 text-[15px] font-semibold tabular-nums transition-colors duration-300 ${
-            entrada.recebida
-              ? "text-neutra"
-              : mesFuturo
-                ? "text-previsao"
-                : "text-entrada"
+            entrada.recebida ? "text-neutra" : "text-previsao"
           }`}
         >
           {formatarBRL(entrada.valor)}
@@ -275,16 +269,20 @@ function BadgeDia({ tipo, dia }: { tipo: "fecha" | "vence"; dia: number }) {
 
 interface CartaoFaturaProps {
   fatura: Fatura;
-  mesFuturo: boolean;
+  cartoes: Cartao[];
   onEditar: (d: Despesa) => void;
 }
 
 /** Fatura de um cartão: consolidado com setinha para expandir os itens. */
-function CartaoFatura({ fatura, mesFuturo, onEditar }: CartaoFaturaProps) {
+function CartaoFatura({ fatura, cartoes, onEditar }: CartaoFaturaProps) {
   const [aberta, setAberta] = useState(false);
   const semMovimento = useReducedMotion();
   const pendentes = fatura.despesas.filter((d) => !d.paga).length;
   const tudoPago = pendentes === 0;
+  // Cartão da fatura, para mostrar os dias dela nos itens expandidos.
+  const cartao = fatura.cartaoId
+    ? cartoes.find((c) => c.id === fatura.cartaoId)
+    : undefined;
 
   return (
     <li className="rounded-2xl bg-surface shadow-sm">
@@ -301,10 +299,10 @@ function CartaoFatura({ fatura, mesFuturo, onEditar }: CartaoFaturaProps) {
             <span className="min-w-0 truncate text-[15px] font-semibold">{fatura.nome}</span>
             <span
               className={`shrink-0 text-[15px] font-semibold tabular-nums ${
-                tudoPago ? "text-neutra" : mesFuturo ? "text-previsao" : "text-despesa"
+                tudoPago ? "text-neutra" : "text-despesa"
               }`}
             >
-              {formatarBRL(fatura.total)}
+              R$ -{formatarNumero(fatura.total)}
             </span>
           </span>
           {/* Fechamento/vencimento da fatura ao lado do cartão, acima das despesas */}
@@ -346,8 +344,7 @@ function CartaoFatura({ fatura, mesFuturo, onEditar }: CartaoFaturaProps) {
                 <ItemDespesa
                   key={d.id}
                   despesa={d}
-                  cartoes={[]}
-                  mesFuturo={mesFuturo}
+                  cartoes={cartao ? [cartao] : []}
                   onEditar={onEditar}
                 />
               ))}
@@ -383,7 +380,6 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
   const [valorMax, setValorMax] = useState(0);
   const [ordem, setOrdem] = useState<"" | "menor" | "maior">("");
 
-  const mesFuturo = mes > mesRef;
   const doMesDespesas = despesas.filter((d) => d.mes === mes);
   const doMesEntradas = entradas.filter((e) => e.mes === mes);
 
@@ -450,100 +446,7 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
         </div>
       )}
 
-      <section
-        aria-label="Contas do mês"
-        className="rounded-2xl bg-surface px-4 py-2 shadow-sm"
-      >
-        {vazio ? (
-          <div className="flex flex-col items-center gap-2 py-10 text-center">
-            <p className="text-[15px] font-medium text-foreground/70">
-              Nada por aqui ainda
-            </p>
-            <p className="max-w-60 text-sm text-foreground/50">
-              Toque no botão + para adicionar as contas de {nomeMesCurto(mes).toLowerCase()}.
-            </p>
-          </div>
-        ) : temFiltroValorVenc ? (
-          /* Resultado da busca: lista plana de despesas + entradas */
-          <>
-            <p className="py-2 text-xs font-medium text-foreground/50" aria-live="polite">
-              {resultadosFiltro} resultado{resultadosFiltro === 1 ? "" : "s"}
-            </p>
-            {resultadosFiltro === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-10 text-center">
-                <p className="text-[15px] font-medium text-foreground/70">
-                  Nada com esses filtros
-                </p>
-                <button
-                  type="button"
-                  onClick={limparFiltros}
-                  className="rounded-full px-3 py-1 text-xs font-medium text-previsao hover:bg-menta/20"
-                >
-                  Limpar filtros
-                </button>
-              </div>
-            ) : (
-              <ul className="list-none">
-                <AnimatePresence initial={false}>
-                  {despesasFiltradas.map((d) => (
-                    <ItemDespesa
-                      key={d.id}
-                      despesa={d}
-                      cartoes={cartoes}
-                      mesFuturo={mesFuturo}
-                      onEditar={setDespesaEdicao}
-                    />
-                  ))}
-                  {entradasFiltradas.map((e) => (
-                    <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
-                  ))}
-                </AnimatePresence>
-              </ul>
-            )}
-          </>
-        ) : (
-          <>
-            {/* Consolidado de faturas por cartão (expansível) */}
-            {faturasVisiveis.length > 0 && (
-              <ul className="flex list-none flex-col gap-2 py-2">
-                {faturasVisiveis.map((f) => (
-                  <CartaoFatura
-                    key={f.cartaoId || "sem-cartao"}
-                    fatura={f}
-                    mesFuturo={mesFuturo}
-                    onEditar={setDespesaEdicao}
-                  />
-                ))}
-              </ul>
-            )}
-
-            {/* Avulsas (pix/boleto) + entradas */}
-            {(avulsasVisiveis.length > 0 || entradasVisiveis.length > 0) && (
-              <ul className="list-none">
-                <AnimatePresence initial={false}>
-                  {avulsasVisiveis.map((d) => (
-                    <ItemDespesa
-                      key={d.id}
-                      despesa={d}
-                      cartoes={cartoes}
-                      mesFuturo={mesFuturo}
-                      onEditar={setDespesaEdicao}
-                    />
-                  ))}
-                  {entradasVisiveis.map((e) => (
-                    <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
-                  ))}
-                </AnimatePresence>
-              </ul>
-            )}
-          </>
-        )}
-        <p className="sr-only">
-          Mês de referência para previsões: {mesRef}. Próximo mês: {somarMes(mes, 1)}.
-        </p>
-      </section>
-
-      {/* Painel de filtros por vencimento e valor */}
+      {/* Painel de filtros por vencimento e valor (acima da lista de despesas) */}
       {!vazio && (
         <section aria-label="Filtrar lançamentos">
           <button
@@ -695,6 +598,97 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
           </AnimatePresence>
         </section>
       )}
+
+      <section
+        aria-label="Contas do mês"
+        className="rounded-2xl bg-surface px-4 py-2 shadow-sm"
+      >
+        {vazio ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-center">
+            <p className="text-[15px] font-medium text-foreground/70">
+              Nada por aqui ainda
+            </p>
+            <p className="max-w-60 text-sm text-foreground/50">
+              Toque no botão + para adicionar as contas de {nomeMesCurto(mes).toLowerCase()}.
+            </p>
+          </div>
+        ) : temFiltroValorVenc ? (
+          /* Resultado da busca: lista plana de despesas + entradas */
+          <>
+            <p className="py-2 text-xs font-medium text-foreground/50" aria-live="polite">
+              {resultadosFiltro} resultado{resultadosFiltro === 1 ? "" : "s"}
+            </p>
+            {resultadosFiltro === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <p className="text-[15px] font-medium text-foreground/70">
+                  Nada com esses filtros
+                </p>
+                <button
+                  type="button"
+                  onClick={limparFiltros}
+                  className="rounded-full px-3 py-1 text-xs font-medium text-previsao hover:bg-menta/20"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            ) : (
+              <ul className="list-none">
+                <AnimatePresence initial={false}>
+                  {despesasFiltradas.map((d) => (
+                    <ItemDespesa
+                      key={d.id}
+                      despesa={d}
+                      cartoes={cartoes}
+                      onEditar={setDespesaEdicao}
+                    />
+                  ))}
+                  {entradasFiltradas.map((e) => (
+                    <ItemEntrada key={e.id} entrada={e} onEditar={setEntradaEdicao} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Consolidado de faturas por cartão (expansível) */}
+            {faturasVisiveis.length > 0 && (
+              <ul className="flex list-none flex-col gap-2 py-2">
+                {faturasVisiveis.map((f) => (
+                  <CartaoFatura
+                    key={f.cartaoId || "sem-cartao"}
+                    fatura={f}
+                    cartoes={cartoes}
+                    onEditar={setDespesaEdicao}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {/* Avulsas (pix/boleto) + entradas */}
+            {(avulsasVisiveis.length > 0 || entradasVisiveis.length > 0) && (
+              <ul className="list-none">
+                <AnimatePresence initial={false}>
+                  {avulsasVisiveis.map((d) => (
+                    <ItemDespesa
+                      key={d.id}
+                      despesa={d}
+                      cartoes={cartoes}
+                      onEditar={setDespesaEdicao}
+                    />
+                  ))}
+                  {entradasVisiveis.map((e) => (
+                    <ItemEntrada key={e.id} entrada={e} onEditar={setEntradaEdicao} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+          </>
+        )}
+        <p className="sr-only">
+          Mês de referência para previsões: {mesRef}. Próximo mês: {somarMes(mes, 1)}.
+        </p>
+      </section>
 
       <EditarLancamento
         despesa={despesaEdicao}

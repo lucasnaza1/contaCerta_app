@@ -3,27 +3,53 @@
 import { useState } from "react";
 import { IconeBanco } from "@/components/IconeBanco";
 import { db, salvarConfig } from "@/lib/db";
-import { mesAtual } from "@/lib/mes";
+import { diaValido, mesAtual } from "@/lib/mes";
 import type { Cartao } from "@/lib/tipos";
 
 interface CadastroInicialProps {
   onPronto: () => void;
 }
 
-/** Cadastro rápido: cartões que usa (opcional). */
+const inputClasse =
+  "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-4 py-2 outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+const inputDiaClasse =
+  "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-3 py-2 text-center outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+
+/** Cadastro rápido: cartões que usa (opcional), com dias da fatura. */
 export function CadastroInicial({ onPronto }: CadastroInicialProps) {
   const [nomeCartao, setNomeCartao] = useState("");
+  const [fechamento, setFechamento] = useState("");
+  const [vencimento, setVencimento] = useState("");
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
+  const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   async function adicionarCartao() {
     const nome = nomeCartao.trim();
-    if (!nome || cartoes.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) {
+    if (!nome) return;
+    if (cartoes.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) {
       setNomeCartao("");
       return;
     }
-    setCartoes([...cartoes, { id: crypto.randomUUID(), nome }]);
+    const f = fechamento ? Number(fechamento) : undefined;
+    const v = vencimento ? Number(vencimento) : undefined;
+    if ((f !== undefined && !diaValido(f)) || (v !== undefined && !diaValido(v))) {
+      setErro("Os dias de fechamento/vencimento devem ser entre 1 e 31.");
+      return;
+    }
+    setErro("");
+    setCartoes([
+      ...cartoes,
+      {
+        id: crypto.randomUUID(),
+        nome,
+        ...(f !== undefined ? { diaFechamento: f } : {}),
+        ...(v !== undefined ? { diaVencimento: v } : {}),
+      },
+    ]);
     setNomeCartao("");
+    setFechamento("");
+    setVencimento("");
   }
 
   async function finalizar(pularCartoes: boolean) {
@@ -53,28 +79,79 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
           Quais cartões você usa?{" "}
           <span className="font-normal text-foreground/50">(opcional)</span>
         </label>
-        <div className="flex gap-2">
-          <input
-            id="cartao"
-            autoComplete="off"
-            value={nomeCartao}
-            onChange={(e) => setNomeCartao(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                adicionarCartao();
-              }
-            }}
-            placeholder="Ex.: Nubank"
-            className="botao-min flex-1 rounded-xl border border-borda bg-campo px-4 py-2 outline-none focus:border-previsao focus:ring-2 focus:ring-menta"
-          />
-          <button
-            type="button"
-            onClick={adicionarCartao}
-            className="botao-min rounded-xl bg-menta px-4 py-2 font-semibold text-foreground hover:bg-menta/80"
-          >
-            Adicionar
-          </button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              id="cartao"
+              autoComplete="off"
+              value={nomeCartao}
+              onChange={(e) => {
+                setNomeCartao(e.target.value);
+                setErro("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  adicionarCartao();
+                }
+              }}
+              placeholder="Ex.: Nubank"
+              className={inputClasse}
+            />
+            <button
+              type="button"
+              onClick={adicionarCartao}
+              className="botao-min shrink-0 rounded-xl bg-menta px-4 py-2 font-semibold text-foreground hover:bg-menta/80"
+            >
+              Adicionar
+            </button>
+          </div>
+          {/* Dias da fatura já no cadastro (opcionais) */}
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor="fechamento"
+                className="block pb-1 text-xs font-medium text-foreground/60"
+              >
+                Fatura fecha dia <span className="font-normal">(opcional)</span>
+              </label>
+              <input
+                id="fechamento"
+                inputMode="numeric"
+                value={fechamento}
+                onChange={(e) => {
+                  setFechamento(e.target.value.replace(/\D/g, "").slice(0, 2));
+                  setErro("");
+                }}
+                placeholder="1–31"
+                aria-label="Dia de fechamento da fatura"
+                className={inputDiaClasse}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor="vencimento"
+                className="block pb-1 text-xs font-medium text-foreground/60"
+              >
+                Fatura vence dia <span className="font-normal">(opcional)</span>
+              </label>
+              <input
+                id="vencimento"
+                inputMode="numeric"
+                value={vencimento}
+                onChange={(e) => {
+                  setVencimento(e.target.value.replace(/\D/g, "").slice(0, 2));
+                  setErro("");
+                }}
+                placeholder="1–31"
+                aria-label="Dia de vencimento da fatura"
+                className={inputDiaClasse}
+              />
+            </div>
+          </div>
+          <p aria-live="polite" className="min-h-5 text-sm text-despesa">
+            {erro}
+          </p>
         </div>
         {cartoes.length > 0 && (
           <ul className="flex flex-wrap gap-2 pt-1" aria-label="Cartões adicionados">
@@ -88,6 +165,13 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
                 >
                   <IconeBanco nome={c.nome} tamanho={22} className="rounded-full" />
                   {c.nome}
+                  {(c.diaFechamento || c.diaVencimento) && (
+                    <span className="text-xs font-normal text-foreground/50">
+                      {c.diaFechamento ? `fecha ${c.diaFechamento}` : ""}
+                      {c.diaFechamento && c.diaVencimento ? " · " : ""}
+                      {c.diaVencimento ? `vence ${c.diaVencimento}` : ""}
+                    </span>
+                  )}
                   <span aria-hidden className="text-foreground/40">
                     ×
                   </span>
@@ -119,4 +203,3 @@ export function CadastroInicial({ onPronto }: CadastroInicialProps) {
     </div>
   );
 }
-

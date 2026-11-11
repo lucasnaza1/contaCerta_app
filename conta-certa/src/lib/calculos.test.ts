@@ -5,6 +5,8 @@ import {
   calcularSobra,
   consolidar,
   diaVencimentoDespesa,
+  filtrarDespesas,
+  filtrarEntradas,
   resumirMes,
   simularEconomia,
 } from "./calculos";
@@ -251,6 +253,65 @@ describe("calcularSobra", () => {
 
   it("pode ficar negativa", () => {
     expect(calcularSobra(100000, 50000, fixas)).toBe(-110000);
+  });
+});
+
+describe("filtrarDespesas", () => {
+  const cartoes: Cartao[] = [{ id: "c1", nome: "Nubank", diaVencimento: 10 }];
+  const despesas = [
+    despesa("2026-11", 1000, { vencimento: 5 }),
+    despesa("2026-11", 5000, { vencimento: 5 }),
+    despesa("2026-11", 2000, { forma: "cartao", cartaoId: "c1" }), // vence dia 10
+    despesa("2026-11", 3000),
+  ];
+
+  it("sem filtro devolve tudo, na ordem original", () => {
+    expect(filtrarDespesas(despesas, cartoes)).toEqual(despesas);
+  });
+
+  it("filtra por faixa de valor", () => {
+    const r = filtrarDespesas(despesas, cartoes, { valorMin: 1500, valorMax: 3000 });
+    expect(r.map((d) => d.valor)).toEqual([2000, 3000]);
+  });
+
+  it("filtra por dia de vencimento efetivo (conta própria ou fatura)", () => {
+    const r = filtrarDespesas(despesas, cartoes, { diaVencimento: 5 });
+    expect(r.map((d) => d.valor)).toEqual([1000, 5000]);
+    const daFatura = filtrarDespesas(despesas, cartoes, { diaVencimento: 10 });
+    expect(daFatura.map((d) => d.valor)).toEqual([2000]);
+  });
+
+  it("ordena por valor crescente e decrescente", () => {
+    const menor = filtrarDespesas(despesas, cartoes, { ordenarPorValor: "menor" });
+    expect(menor.map((d) => d.valor)).toEqual([1000, 2000, 3000, 5000]);
+    const maior = filtrarDespesas(despesas, cartoes, { ordenarPorValor: "maior" });
+    expect(maior.map((d) => d.valor)).toEqual([5000, 3000, 2000, 1000]);
+  });
+
+  it("combina valor + vencimento + ordem", () => {
+    const r = filtrarDespesas(despesas, cartoes, {
+      diaVencimento: 5,
+      ordenarPorValor: "maior",
+    });
+    expect(r.map((d) => d.valor)).toEqual([5000, 1000]);
+  });
+});
+
+describe("filtrarEntradas", () => {
+  const entradas = [entrada("2026-11", 1000), entrada("2026-11", 5000), entrada("2026-11", 3000)];
+
+  it("sem filtro devolve tudo na ordem original", () => {
+    expect(filtrarEntradas(entradas)).toEqual(entradas);
+  });
+
+  it("filtra por faixa de valor", () => {
+    const r = filtrarEntradas(entradas, { valorMin: 1500 });
+    expect(r.map((e) => e.valor)).toEqual([5000, 3000]);
+  });
+
+  it("ordena por valor", () => {
+    const r = filtrarEntradas(entradas, { valorMax: 4000, ordenarPorValor: "menor" });
+    expect(r.map((e) => e.valor)).toEqual([1000, 3000]);
   });
 });
 

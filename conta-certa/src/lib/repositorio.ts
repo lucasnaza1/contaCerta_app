@@ -203,17 +203,16 @@ export async function adicionarCartao(
   return cartao;
 }
 
-export async function renomearCartao(id: string, nome: string): Promise<void> {
-  await db.cartoes.update(id, { nome: nome.trim() });
-}
-
-/** Atualiza os dias de fechamento e vencimento da fatura (undefined limpa). */
-export async function atualizarDiasCartao(
+/** Edição do cartão em um update só: nome e dias da fatura (undefined limpa). */
+export async function atualizarCartao(
   id: string,
-  diaFechamento: number | undefined,
-  diaVencimento: number | undefined
+  dados: { nome: string; diaFechamento?: number; diaVencimento?: number }
 ): Promise<void> {
-  await db.cartoes.update(id, { diaFechamento, diaVencimento });
+  await db.cartoes.update(id, {
+    nome: dados.nome.trim(),
+    diaFechamento: dados.diaFechamento,
+    diaVencimento: dados.diaVencimento,
+  });
 }
 
 /** Remove o cartão e desvincula as despesas que o usavam. */

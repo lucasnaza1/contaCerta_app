@@ -1,16 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { CalendarDays, Download, Pencil, Trash2, Upload } from "lucide-react";
+import { Download, Pencil, Trash2, Upload } from "lucide-react";
 import { Abas } from "@/components/Abas";
 import { IconeBanco } from "@/components/IconeBanco";
 import { exportarBackup, lerBackup, type ResumoBackup } from "@/lib/db";
-import {
-  adicionarCartao,
-  atualizarDiasCartao,
-  removerCartao,
-  renomearCartao,
-} from "@/lib/repositorio";
+import { adicionarCartao, atualizarCartao, removerCartao } from "@/lib/repositorio";
 import { diaValido } from "@/lib/mes";
 import { registrarBackupFeito, useUltimoBackup } from "@/lib/useUltimoBackup";
 import { useDados } from "@/lib/useDados";
@@ -18,16 +13,26 @@ import { useModoEscuro } from "@/lib/useModoEscuro";
 
 const inputClasse =
   "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-4 py-2.5 text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+const inputDiaClasse =
+  "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-3 py-2.5 text-center text-[15px] outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+
+/** Estado do formulário de cartão (usado no cadastro e na edição). */
+interface FormCartao {
+  nome: string;
+  fechamento: string;
+  vencimento: string;
+}
+
+const FORM_VAZIO: FormCartao = { nome: "", fechamento: "", vencimento: "" };
 
 export default function PaginaAjustes() {
   const { carregando, config, cartoes, despesas } = useDados();
   const { escuro, alternar } = useModoEscuro();
   const { ultimo } = useUltimoBackup();
-  const [nomeCartao, setNomeCartao] = useState("");
-  // Cadastro do fechamento/vencimento da fatura de um cartão existente.
-  const [cartaoEditando, setCartaoEditando] = useState<string | null>(null);
-  const [fechamento, setFechamento] = useState("");
-  const [vencimentoFatura, setVencimentoFatura] = useState("");
+  const [novo, setNovo] = useState<FormCartao>(FORM_VAZIO);
+  // Cartão em edição inline (nome + dias da fatura em um formulário só).
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [edicao, setEdicao] = useState<FormCartao>(FORM_VAZIO);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const inputArquivo = useRef<HTMLInputElement>(null);
@@ -60,47 +65,70 @@ export default function PaginaAjustes() {
     );
   }
 
-  async function aoAdicionarCartao() {
-    const nome = nomeCartao.trim();
-    if (!nome) return;
-    if (cartoes.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) {
-      setNomeCartao("");
-      return;
-    }
-    await adicionarCartao(nome);
-    setNomeCartao("");
+  function paraDia(texto: string): number | undefined {
+    return texto ? Number(texto) : undefined;
   }
 
-  /** Abre o formulário de fechamento/vencimento de um cartão. */
-  function abrirDiasFatura(id: string) {
+  /** Valida o formulário; retorna os dias ou mensagem de erro. */
+  function validarDias(form: FormCartao): { ok: true; f?: number; v?: number } | { ok: false; msg: string } {
+    const f = paraDia(form.fechamento);
+    const v = paraDia(form.vencimento);
+    if ((f !== undefined && !diaValido(f)) || (v !== undefined && !diaValido(v))) {
+      return { ok: false, msg: "Os dias devem ser entre 1 e 31." };
+    }
+    return { ok: true, f, v };
+  }
+
+  async function aoAdicionarCartao() {
+    const nome = novo.nome.trim();
+    if (!nome) return;
+    if (cartoes.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) {
+      setNovo({ ...FORM_VAZIO });
+      return;
+    }
+    const dias = validarDias(novo);
+    if (!dias.ok) {
+      setErro(dias.msg);
+      return;
+    }
+    setErro("");
+    await adicionarCartao(nome, dias.f, dias.v);
+    setNovo(FORM_VAZIO);
+  }
+
+  function abrirEdicao(id: string) {
     const c = cartoes.find((x) => x.id === id);
-    setCartaoEditando(id);
-    setFechamento(c?.diaFechamento ? String(c.diaFechamento) : "");
-    setVencimentoFatura(c?.diaVencimento ? String(c.diaVencimento) : "");
+    setEditandoId(id);
+    setEdicao({
+      nome: c?.nome ?? "",
+      fechamento: c?.diaFechamento ? String(c.diaFechamento) : "",
+      vencimento: c?.diaVencimento ? String(c.diaVencimento) : "",
+    });
     setErro("");
     setAviso("");
   }
 
-  async function salvarDiasFatura() {
-    if (!cartaoEditando) return;
-    const f = fechamento ? Number(fechamento) : undefined;
-    const v = vencimentoFatura ? Number(vencimentoFatura) : undefined;
-    if ((f !== undefined && !diaValido(f)) || (v !== undefined && !diaValido(v))) {
-      setErro("Os dias devem ser entre 1 e 31.");
+  async function salvarEdicao() {
+    if (!editandoId) return;
+    const nome = edicao.nome.trim();
+    if (!nome) {
+      setErro("Escreva o nome do cartão.");
       return;
     }
-    await atualizarDiasCartao(cartaoEditando, f, v);
-    setCartaoEditando(null);
-    setFechamento("");
-    setVencimentoFatura("");
+    const dias = validarDias(edicao);
+    if (!dias.ok) {
+      setErro(dias.msg);
+      return;
+    }
     setErro("");
-    setAviso("Fatura do cartão atualizada.");
-  }
-
-  async function aoRenomearCartao(id: string, nomeAtual: string) {
-    const nome = window.prompt("Novo nome do cartão:", nomeAtual)?.trim();
-    if (!nome || nome === nomeAtual) return;
-    await renomearCartao(id, nome);
+    await atualizarCartao(editandoId, {
+      nome,
+      diaFechamento: dias.f,
+      diaVencimento: dias.v,
+    });
+    setEditandoId(null);
+    setEdicao(FORM_VAZIO);
+    setAviso("Cartão atualizado.");
   }
 
   async function aoRemoverCartao(id: string, nome: string) {
@@ -197,135 +225,203 @@ export default function PaginaAjustes() {
               ) : (
                 cartoes.map((c) => (
                   <li key={c.id} className="flex flex-col gap-2 py-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <IconeBanco nome={c.nome} tamanho={24} />
-                        <span className="truncate text-[15px]">{c.nome}</span>
-                      </span>
-                      {(c.diaFechamento || c.diaVencimento) && (
-                        <span className="hidden shrink-0 text-xs text-foreground/50 sm:inline">
-                          fecha dia {c.diaFechamento ?? "—"} · vence dia{" "}
-                          {c.diaVencimento ?? "—"}
-                        </span>
-                      )}
-                      <span className="flex shrink-0 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => abrirDiasFatura(c.id)}
-                          aria-label={`Fechamento e vencimento da fatura de ${c.nome}`}
-                          className="botao-min rounded-full px-2 text-foreground/50 hover:text-foreground"
-                        >
-                          <CalendarDays aria-hidden className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => aoRenomearCartao(c.id, c.nome)}
-                          aria-label={`Renomear ${c.nome}`}
-                          className="botao-min rounded-full px-2 text-foreground/50 hover:text-foreground"
-                        >
-                          <Pencil aria-hidden className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => aoRemoverCartao(c.id, c.nome)}
-                          aria-label={`Remover ${c.nome}`}
-                          className="botao-min rounded-full px-2 text-foreground/40 hover:text-despesa"
-                        >
-                          <Trash2 aria-hidden className="h-4 w-4" />
-                        </button>
-                      </span>
-                    </div>
-                    {(c.diaFechamento || c.diaVencimento) && (
-                      <p className="text-xs text-foreground/50 sm:hidden">
-                        fecha dia {c.diaFechamento ?? "—"} · vence dia {c.diaVencimento ?? "—"}
-                      </p>
-                    )}
-
-                    {/* Fechamento e vencimento da fatura */}
-                    {cartaoEditando === c.id && (
+                    {editandoId === c.id ? (
+                      /* Edição inline: nome + dias da fatura em um formulário só */
                       <div className="flex flex-col gap-2 rounded-xl bg-background/60 p-3">
-                        <p className="text-xs font-medium text-foreground/60">
-                          Fatura de {c.nome}
-                        </p>
+                        <div className="flex flex-col gap-1">
+                          <label
+                            htmlFor={`editar-nome-${c.id}`}
+                            className="text-xs font-medium text-foreground/60"
+                          >
+                            Nome
+                          </label>
+                          <input
+                            id={`editar-nome-${c.id}`}
+                            value={edicao.nome}
+                            onChange={(e) => {
+                              setEdicao({ ...edicao, nome: e.target.value });
+                              setErro("");
+                            }}
+                            className={inputClasse}
+                          />
+                        </div>
                         <div className="flex flex-wrap items-end gap-2">
                           <div className="w-28">
                             <label
-                              htmlFor={`fechamento-${c.id}`}
+                              htmlFor={`editar-fechamento-${c.id}`}
                               className="text-xs font-medium text-foreground/60"
                             >
                               Fecha dia
                             </label>
                             <input
-                              id={`fechamento-${c.id}`}
+                              id={`editar-fechamento-${c.id}`}
                               inputMode="numeric"
-                              value={fechamento}
+                              value={edicao.fechamento}
                               onChange={(e) =>
-                                setFechamento(e.target.value.replace(/\D/g, "").slice(0, 2))
+                                setEdicao({
+                                  ...edicao,
+                                  fechamento: e.target.value.replace(/\D/g, "").slice(0, 2),
+                                })
                               }
                               placeholder="1–31"
-                              className={inputClasse}
+                              className={inputDiaClasse}
                             />
                           </div>
                           <div className="w-28">
                             <label
-                              htmlFor={`vencimento-fatura-${c.id}`}
+                              htmlFor={`editar-vencimento-${c.id}`}
                               className="text-xs font-medium text-foreground/60"
                             >
                               Vence dia
                             </label>
                             <input
-                              id={`vencimento-fatura-${c.id}`}
+                              id={`editar-vencimento-${c.id}`}
                               inputMode="numeric"
-                              value={vencimentoFatura}
+                              value={edicao.vencimento}
                               onChange={(e) =>
-                                setVencimentoFatura(e.target.value.replace(/\D/g, "").slice(0, 2))
+                                setEdicao({
+                                  ...edicao,
+                                  vencimento: e.target.value.replace(/\D/g, "").slice(0, 2),
+                                })
                               }
                               placeholder="1–31"
-                              className={inputClasse}
+                              className={inputDiaClasse}
                             />
                           </div>
                           <button
                             type="button"
-                            onClick={salvarDiasFatura}
+                            onClick={salvarEdicao}
                             className="botao-min shrink-0 rounded-xl bg-menta px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-menta/80"
                           >
                             Salvar
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCartaoEditando(null)}
+                            onClick={() => setEditandoId(null)}
                             className="botao-min shrink-0 rounded-xl px-3 py-2.5 text-sm font-medium text-foreground/60 hover:text-foreground"
                           >
                             Cancelar
                           </button>
                         </div>
                       </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <IconeBanco nome={c.nome} tamanho={24} />
+                            <span className="truncate text-[15px]">{c.nome}</span>
+                          </span>
+                          <span className="flex shrink-0 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => abrirEdicao(c.id)}
+                              aria-label={`Editar ${c.nome}`}
+                              className="botao-min rounded-full px-2 text-foreground/50 hover:text-foreground"
+                            >
+                              <Pencil aria-hidden className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => aoRemoverCartao(c.id, c.nome)}
+                              aria-label={`Remover ${c.nome}`}
+                              className="botao-min rounded-full px-2 text-foreground/40 hover:text-despesa"
+                            >
+                              <Trash2 aria-hidden className="h-4 w-4" />
+                            </button>
+                          </span>
+                        </div>
+                        {(c.diaFechamento || c.diaVencimento) && (
+                          <p className="flex flex-wrap gap-1.5 text-xs text-foreground/50">
+                            {c.diaFechamento && (
+                              <span className="rounded-full bg-previsao/10 px-2 py-0.5 font-medium text-previsao">
+                                fecha dia {c.diaFechamento}
+                              </span>
+                            )}
+                            {c.diaVencimento && (
+                              <span className="rounded-full bg-despesa/10 px-2 py-0.5 font-medium text-despesa">
+                                vence dia {c.diaVencimento}
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </>
                     )}
                   </li>
                 ))
               )}
             </ul>
-            <div className="flex gap-2">
-              <input
-                aria-label="Nome do novo cartão"
-                value={nomeCartao}
-                onChange={(e) => setNomeCartao(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    aoAdicionarCartao();
-                  }
-                }}
-                placeholder="Ex.: Nubank"
-                className={inputClasse}
-              />
-              <button
-                type="button"
-                onClick={aoAdicionarCartao}
-                className="botao-min shrink-0 rounded-xl bg-menta px-4 py-2 text-sm font-semibold text-foreground hover:bg-menta/80"
-              >
-                Adicionar
-              </button>
+
+            {/* Cadastro: nome + dias da fatura no ato */}
+            <div className="flex flex-col gap-2 rounded-2xl bg-surface p-4 shadow-sm">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="novo-cartao" className="text-sm font-medium">
+                  Novo cartão
+                </label>
+                <input
+                  id="novo-cartao"
+                  aria-label="Nome do novo cartão"
+                  value={novo.nome}
+                  onChange={(e) => {
+                    setNovo({ ...novo, nome: e.target.value });
+                    setErro("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      aoAdicionarCartao();
+                    }
+                  }}
+                  placeholder="Ex.: Nubank"
+                  className={inputClasse}
+                />
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-28">
+                  <label
+                    htmlFor="novo-fechamento"
+                    className="block pb-1 text-xs font-medium text-foreground/60"
+                  >
+                    Fecha dia
+                  </label>
+                  <input
+                    id="novo-fechamento"
+                    inputMode="numeric"
+                    value={novo.fechamento}
+                    onChange={(e) =>
+                      setNovo({ ...novo, fechamento: e.target.value.replace(/\D/g, "").slice(0, 2) })
+                    }
+                    placeholder="1–31"
+                    aria-label="Dia de fechamento da fatura"
+                    className={inputDiaClasse}
+                  />
+                </div>
+                <div className="w-28">
+                  <label
+                    htmlFor="novo-vencimento"
+                    className="block pb-1 text-xs font-medium text-foreground/60"
+                  >
+                    Vence dia
+                  </label>
+                  <input
+                    id="novo-vencimento"
+                    inputMode="numeric"
+                    value={novo.vencimento}
+                    onChange={(e) =>
+                      setNovo({ ...novo, vencimento: e.target.value.replace(/\D/g, "").slice(0, 2) })
+                    }
+                    placeholder="1–31"
+                    aria-label="Dia de vencimento da fatura"
+                    className={inputDiaClasse}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={aoAdicionarCartao}
+                  className="botao-min shrink-0 rounded-xl bg-menta px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-menta/80"
+                >
+                  Adicionar
+                </button>
+              </div>
             </div>
           </section>
 

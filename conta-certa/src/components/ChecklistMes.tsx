@@ -2,11 +2,17 @@
 
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus, SlidersHorizontal, X } from "lucide-react";
 import { EditarLancamento } from "@/components/EditarLancamento";
 import { IconeBanco } from "@/components/IconeBanco";
 import { IconeForma } from "@/components/IconeForma";
-import { agruparFaturas, diaVencimentoDespesa, type Fatura } from "@/lib/calculos";
+import {
+  agruparFaturas,
+  diaVencimentoDespesa,
+  filtrarDespesas,
+  filtrarEntradas,
+  type Fatura,
+} from "@/lib/calculos";
 import { marcarPaga, marcarRecebida } from "@/lib/repositorio";
 import { formatarBRL } from "@/lib/dinheiro";
 import { nomeMesCurto, somarMes } from "@/lib/mes";
@@ -252,6 +258,21 @@ function ItemEntrada({ entrada, mesFuturo, onEditar }: ItemEntradaProps) {
   );
 }
 
+/** Badge com dia de fechamento/vencimento da fatura. */
+function BadgeDia({ tipo, dia }: { tipo: "fecha" | "vence"; dia: number }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        tipo === "fecha"
+          ? "bg-previsao/10 text-previsao"
+          : "bg-despesa/10 text-despesa"
+      }`}
+    >
+      {tipo === "fecha" ? "fecha" : "vence"} dia {dia}
+    </span>
+  );
+}
+
 interface CartaoFaturaProps {
   fatura: Fatura;
   mesFuturo: boolean;
@@ -276,26 +297,29 @@ function CartaoFatura({ fatura, mesFuturo, onEditar }: CartaoFaturaProps) {
       >
         <IconeBanco nome={fatura.nome} tamanho={36} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-semibold">{fatura.nome}</span>
-          <span className="block text-xs text-foreground/50">
-            {fatura.despesas.length} compra{fatura.despesas.length > 1 ? "s" : ""} ·{" "}
-            {tudoPago ? "tudo pago" : `${pendentes} a pagar`}
-            {(fatura.diaFechamento || fatura.diaVencimento) && (
-              <>
-                {" · "}
-                {fatura.diaFechamento ? `fecha dia ${fatura.diaFechamento}` : null}
-                {fatura.diaFechamento && fatura.diaVencimento ? " · " : null}
-                {fatura.diaVencimento ? `vence dia ${fatura.diaVencimento}` : null}
-              </>
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="min-w-0 truncate text-[15px] font-semibold">{fatura.nome}</span>
+            <span
+              className={`shrink-0 text-[15px] font-semibold tabular-nums ${
+                tudoPago ? "text-neutra" : mesFuturo ? "text-previsao" : "text-despesa"
+              }`}
+            >
+              {formatarBRL(fatura.total)}
+            </span>
+          </span>
+          {/* Fechamento/vencimento da fatura ao lado do cartão, acima das despesas */}
+          <span className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-foreground/50">
+            <span>
+              {fatura.despesas.length} compra{fatura.despesas.length > 1 ? "s" : ""}
+              {tudoPago ? " · tudo pago" : ` · ${pendentes} a pagar`}
+            </span>
+            {fatura.diaFechamento !== undefined && (
+              <BadgeDia tipo="fecha" dia={fatura.diaFechamento} />
+            )}
+            {fatura.diaVencimento !== undefined && (
+              <BadgeDia tipo="vence" dia={fatura.diaVencimento} />
             )}
           </span>
-        </span>
-        <span
-          className={`shrink-0 text-[15px] font-semibold tabular-nums ${
-            tudoPago ? "text-neutra" : mesFuturo ? "text-previsao" : "text-despesa"
-          }`}
-        >
-          {formatarBRL(fatura.total)}
         </span>
         <motion.span
           aria-hidden
@@ -343,15 +367,35 @@ interface ChecklistMesProps {
   cartoes: Cartao[];
 }
 
+const selectClasse =
+  "botao-min w-full min-w-0 rounded-xl border border-borda bg-campo px-3 py-2 text-sm outline-none focus:border-previsao focus:ring-2 focus:ring-menta";
+const DIAS = Array.from({ length: 31 }, (_, i) => i + 1);
+
 export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: ChecklistMesProps) {
   const [despesaEdicao, setDespesaEdicao] = useState<Despesa | null>(null);
   const [entradaEdicao, setEntradaEdicao] = useState<Entrada | null>(null);
   // "" = todos; id do cartão filtra; "outros" = pix/boleto.
   const [filtro, setFiltro] = useState("");
+  // Filtros de vencimento/valor (lista plana quando ativos).
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const [diaVenc, setDiaVenc] = useState("");
+  const [valorMin, setValorMin] = useState(0);
+  const [valorMax, setValorMax] = useState(0);
+  const [ordem, setOrdem] = useState<"" | "menor" | "maior">("");
 
   const mesFuturo = mes > mesRef;
   const doMesDespesas = despesas.filter((d) => d.mes === mes);
   const doMesEntradas = entradas.filter((e) => e.mes === mes);
+
+  const temFiltroValorVenc = diaVenc !== "" || valorMin > 0 || valorMax > 0;
+  const temFiltroQualquer = temFiltroValorVenc || ordem !== "";
+
+  function limparFiltros() {
+    setDiaVenc("");
+    setValorMin(0);
+    setValorMax(0);
+    setOrdem("");
+  }
 
   const faturas = agruparFaturas(doMesDespesas, cartoes);
   const faturasVisiveis = filtro ? faturas.filter((f) => f.cartaoId === filtro) : faturas;
@@ -362,12 +406,30 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
   );
   const entradasVisiveis = !filtro || filtro === "outros" ? doMesEntradas : [];
 
+  // Lista plana com filtros de vencimento/valor (ignora agrupamento por fatura).
+  const despesasFiltradas = temFiltroValorVenc
+    ? filtrarDespesas(doMesDespesas, cartoes, {
+        ...(diaVenc !== "" ? { diaVencimento: Number(diaVenc) } : {}),
+        ...(valorMin > 0 ? { valorMin } : {}),
+        ...(valorMax > 0 ? { valorMax } : {}),
+        ...(ordem !== "" ? { ordenarPorValor: ordem } : {}),
+      })
+    : [];
+  const entradasFiltradas = temFiltroValorVenc
+    ? filtrarEntradas(doMesEntradas, {
+        ...(valorMin > 0 ? { valorMin } : {}),
+        ...(valorMax > 0 ? { valorMax } : {}),
+        ...(ordem !== "" ? { ordenarPorValor: ordem } : {}),
+      })
+    : [];
+  const resultadosFiltro = despesasFiltradas.length + entradasFiltradas.length;
+
   const vazio = doMesDespesas.length + doMesEntradas.length === 0;
 
   return (
     <>
-      {/* Filtro por banco/cartão */}
-      {faturas.length > 0 && (
+      {/* Filtro por banco/cartão (só sem filtro de valor/vencimento ativo) */}
+      {faturas.length > 0 && !temFiltroValorVenc && (
         <div
           role="group"
           aria-label="Filtrar por banco"
@@ -401,6 +463,44 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
               Toque no botão + para adicionar as contas de {nomeMesCurto(mes).toLowerCase()}.
             </p>
           </div>
+        ) : temFiltroValorVenc ? (
+          /* Resultado da busca: lista plana de despesas + entradas */
+          <>
+            <p className="py-2 text-xs font-medium text-foreground/50" aria-live="polite">
+              {resultadosFiltro} resultado{resultadosFiltro === 1 ? "" : "s"}
+            </p>
+            {resultadosFiltro === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <p className="text-[15px] font-medium text-foreground/70">
+                  Nada com esses filtros
+                </p>
+                <button
+                  type="button"
+                  onClick={limparFiltros}
+                  className="rounded-full px-3 py-1 text-xs font-medium text-previsao hover:bg-menta/20"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            ) : (
+              <ul className="list-none">
+                <AnimatePresence initial={false}>
+                  {despesasFiltradas.map((d) => (
+                    <ItemDespesa
+                      key={d.id}
+                      despesa={d}
+                      cartoes={cartoes}
+                      mesFuturo={mesFuturo}
+                      onEditar={setDespesaEdicao}
+                    />
+                  ))}
+                  {entradasFiltradas.map((e) => (
+                    <ItemEntrada key={e.id} entrada={e} mesFuturo={mesFuturo} onEditar={setEntradaEdicao} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+          </>
         ) : (
           <>
             {/* Consolidado de faturas por cartão (expansível) */}
@@ -442,6 +542,159 @@ export function ChecklistMes({ mes, mesRef, despesas, entradas, cartoes }: Check
           Mês de referência para previsões: {mesRef}. Próximo mês: {somarMes(mes, 1)}.
         </p>
       </section>
+
+      {/* Painel de filtros por vencimento e valor */}
+      {!vazio && (
+        <section aria-label="Filtrar lançamentos">
+          <button
+            type="button"
+            onClick={() => setFiltrosAbertos(!filtrosAbertos)}
+            aria-expanded={filtrosAbertos}
+            aria-controls="painel-filtros"
+            className={`botao-min flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              temFiltroQualquer
+                ? "border-previsao bg-previsao text-white"
+                : "border-borda bg-surface text-foreground/60 hover:text-foreground"
+            }`}
+          >
+            <SlidersHorizontal aria-hidden className="h-3.5 w-3.5" />
+            Filtros
+            {temFiltroQualquer && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Limpar filtros"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  limparFiltros();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.stopPropagation();
+                    limparFiltros();
+                  }
+                }}
+                className="flex items-center"
+              >
+                <X aria-hidden className="h-3.5 w-3.5" />
+              </span>
+            )}
+          </button>
+
+          <AnimatePresence initial={false}>
+            {filtrosAbertos && (
+              <motion.div
+                id="painel-filtros"
+                key="filtros"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2 flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-sm">
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-0 flex-[2] basis-32">
+                      <label
+                        htmlFor="filtro-vencimento"
+                        className="block pb-1 text-xs font-medium text-foreground/60"
+                      >
+                        Vence no dia (despesas)
+                      </label>
+                      <select
+                        id="filtro-vencimento"
+                        value={diaVenc}
+                        onChange={(e) => setDiaVenc(e.target.value)}
+                        className={selectClasse}
+                      >
+                        <option value="">Todos</option>
+                        {DIAS.map((d) => (
+                          <option key={d} value={d}>
+                            dia {d}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="min-w-0 flex-[2] basis-28">
+                      <label
+                        htmlFor="filtro-ordem"
+                        className="block pb-1 text-xs font-medium text-foreground/60"
+                      >
+                        Ordenar por valor
+                      </label>
+                      <select
+                        id="filtro-ordem"
+                        value={ordem}
+                        onChange={(e) => setOrdem(e.target.value as "" | "menor" | "maior")}
+                        className={selectClasse}
+                      >
+                        <option value="">Sem ordem</option>
+                        <option value="menor">Menor primeiro</option>
+                        <option value="maior">Maior primeiro</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-0 flex-[2] basis-28">
+                      <label
+                        htmlFor="filtro-valor-min"
+                        className="block pb-1 text-xs font-medium text-foreground/60"
+                      >
+                        Valor mínimo
+                      </label>
+                      <input
+                        id="filtro-valor-min"
+                        inputMode="numeric"
+                        value={valorMin ? (valorMin / 100).toFixed(2).replace(".", ",") : ""}
+                        onChange={(e) =>
+                          setValorMin(
+                            Math.round(Number(e.target.value.replace(/\D/g, "")) ) || 0
+                          )
+                        }
+                        placeholder="0,00"
+                        className={selectClasse}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-[2] basis-28">
+                      <label
+                        htmlFor="filtro-valor-max"
+                        className="block pb-1 text-xs font-medium text-foreground/60"
+                      >
+                        Valor máximo
+                      </label>
+                      <input
+                        id="filtro-valor-max"
+                        inputMode="numeric"
+                        value={valorMax ? (valorMax / 100).toFixed(2).replace(".", ",") : ""}
+                        onChange={(e) =>
+                          setValorMax(
+                            Math.round(Number(e.target.value.replace(/\D/g, "")) ) || 0
+                          )
+                        }
+                        placeholder="0,00"
+                        className={selectClasse}
+                      />
+                    </div>
+                    {temFiltroQualquer && (
+                      <button
+                        type="button"
+                        onClick={limparFiltros}
+                        className="botao-min shrink-0 rounded-xl px-3 py-2 text-sm font-medium text-foreground/60 hover:text-foreground"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-foreground/50">
+                    O filtro de valor vale para despesas e entradas; o de vencimento, só
+                    para despesas (conta própria ou fatura do cartão).
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+      )}
 
       <EditarLancamento
         despesa={despesaEdicao}

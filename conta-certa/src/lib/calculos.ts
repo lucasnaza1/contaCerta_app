@@ -263,3 +263,64 @@ export function calcularSobra(
   const fixas = fixasExternas.reduce((s, f) => s + f.valor, 0);
   return rendaMes - despesasMes - fixas;
 }
+
+// ---------- Filtros de lançamentos ----------
+
+export type OrdemValor = "menor" | "maior";
+
+export interface FiltroDespesas {
+  /** Faixa de valor em centavos (fechada); undefined ignora o extremo. */
+  valorMin?: number;
+  valorMax?: number;
+  /** Dia de vencimento efetivo (1–31) para bater exato. */
+  diaVencimento?: number;
+  ordenarPorValor?: OrdemValor;
+}
+
+/**
+ * Filtra despesas por faixa de valor e dia de vencimento efetivo (o
+ * próprio ou o da fatura do cartão). Ordena por valor quando pedido.
+ */
+export function filtrarDespesas(
+  despesas: Despesa[],
+  cartoes: Cartao[],
+  filtro: FiltroDespesas = {}
+): Despesa[] {
+  const { valorMin, valorMax, diaVencimento, ordenarPorValor } = filtro;
+  let lista = despesas.filter((d) => {
+    if (valorMin !== undefined && d.valor < valorMin) return false;
+    if (valorMax !== undefined && d.valor > valorMax) return false;
+    if (diaVencimento !== undefined && diaVencimentoDespesa(d, cartoes) !== diaVencimento) {
+      return false;
+    }
+    return true;
+  });
+  if (ordenarPorValor) {
+    lista = [...lista].sort((a, b) =>
+      ordenarPorValor === "menor" ? a.valor - b.valor : b.valor - a.valor
+    );
+  }
+  return lista;
+}
+
+export interface FiltroEntradas {
+  valorMin?: number;
+  valorMax?: number;
+  ordenarPorValor?: OrdemValor;
+}
+
+/** Filtra entradas por faixa de valor, com ordenação opcional por valor. */
+export function filtrarEntradas(entradas: Entrada[], filtro: FiltroEntradas = {}): Entrada[] {
+  const { valorMin, valorMax, ordenarPorValor } = filtro;
+  let lista = entradas.filter((e) => {
+    if (valorMin !== undefined && e.valor < valorMin) return false;
+    if (valorMax !== undefined && e.valor > valorMax) return false;
+    return true;
+  });
+  if (ordenarPorValor) {
+    lista = [...lista].sort((a, b) =>
+      ordenarPorValor === "menor" ? a.valor - b.valor : b.valor - a.valor
+    );
+  }
+  return lista;
+}
